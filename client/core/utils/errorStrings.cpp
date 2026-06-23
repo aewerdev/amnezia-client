@@ -59,9 +59,6 @@ QString errorString(ErrorCode code) {
     case (ErrorCode::OpenVpnExecutableMissing): errorMessage = QObject::tr("OpenVPN executable missing"); break;
     case (ErrorCode::AmneziaServiceConnectionFailed): errorMessage = QObject::tr("Amnezia helper service error"); break;
     case (ErrorCode::OpenSslFailed): errorMessage = QObject::tr("OpenSSL failed"); break;
-    case (ErrorCode::XrayServerUnreachable): errorMessage = QObject::tr("Can't connect: the VPN server is unreachable"); break;
-    case (ErrorCode::XrayConnectivityCheckFailed): errorMessage = QObject::tr("Can't connect: no internet traffic flows through the tunnel"); break;
-    case (ErrorCode::XrayConnectionLost): errorMessage = QObject::tr("Connection lost: traffic stopped flowing through the tunnel"); break;
 
     // VPN errors
     case (ErrorCode::OpenVpnAdaptersInUseError): errorMessage = QObject::tr("Can't connect: another VPN connection is active"); break;
@@ -72,7 +69,6 @@ QString errorString(ErrorCode code) {
     case (ErrorCode::ImportBackupFileUseRestoreInstead): errorMessage = QObject::tr("Backup files cannot be imported here. Use 'Restore from backup' instead."); break;
     case (ErrorCode::RestoreBackupInvalidError): errorMessage = QObject::tr("Backup file is corrupted or has invalid format"); break;
     case (ErrorCode::LegacyApiV1NotSupportedError): errorMessage = QObject::tr("This legacy Amnezia subscription format is no longer supported"); break;
-    case (ErrorCode::LegacyContainerNotSupportedError): errorMessage = QObject::tr("This protocol is no longer supported. Please select another protocol or remove this container from the server settings."); break;
     case (ErrorCode::ImportOpenConfigError): errorMessage = QObject::tr("Unable to open config file"); break;
     case (ErrorCode::NoInstalledContainersError): errorMessage = QObject::tr("VPN Protocols is not installed.\n Please install VPN container at first"); break;
 

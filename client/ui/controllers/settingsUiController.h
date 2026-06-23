@@ -5,6 +5,8 @@
 
 #include "core/controllers/settingsController.h"
 #include "core/controllers/serversController.h"
+#include "ui/controllers/languageUiController.h"
+#include "ui/models/languageModel.h"
 #include "core/utils/errorCodes.h"
 #include "core/utils/routeModes.h"
 #include "core/utils/commonStructs.h"
@@ -15,6 +17,7 @@ class SettingsUiController : public QObject
 public:
     explicit SettingsUiController(SettingsController* settingsController,
                                  ServersController* serversController,
+                                 LanguageUiController* languageUiController,
                                  QObject *parent = nullptr);
 
     Q_PROPERTY(QString primaryDns READ getPrimaryDns WRITE setPrimaryDns NOTIFY primaryDnsChanged)
@@ -29,7 +32,6 @@ public:
     Q_PROPERTY(bool isDevGatewayEnv READ isDevGatewayEnv WRITE toggleDevGatewayEnv NOTIFY devGatewayEnvChanged)
 
     Q_PROPERTY(bool isHomeAdLabelVisible READ isHomeAdLabelVisible NOTIFY isHomeAdLabelVisibleChanged)
-    Q_PROPERTY(bool autoStartEnabled READ isAutoStartEnabled NOTIFY autoStartChanged)
     Q_PROPERTY(bool startMinimized READ isStartMinimizedEnabled NOTIFY startMinimizedChanged)
     Q_PROPERTY(bool isLocalProxySupported READ isLocalProxySupported CONSTANT)
     Q_PROPERTY(bool isLocalProxyHttpEnabled READ isLocalProxyHttpEnabled NOTIFY localProxySettingsUpdated)
@@ -135,7 +137,7 @@ signals:
 
     void loggingDisableByWatcher();
 
-    void appLanguageChanged();
+    void appLanguageChanged(const LanguageSettings::AvailableLanguageEnum language);
     void resetLanguageToSystem();
 
     void onNotificationStateChanged();
@@ -148,7 +150,6 @@ signals:
     void activityResumed();
 
     void isHomeAdLabelVisibleChanged(bool visible);
-    void autoStartChanged();
     void startMinimizedChanged();
     void localProxySettingsUpdated();
     void localProxyStartFailed(const QString &message);
@@ -156,6 +157,7 @@ signals:
 private:
     SettingsController* m_settingsController;
     ServersController* m_serversController;
+    LanguageUiController* m_languageUiController;
 };
 
 #endif

@@ -128,7 +128,8 @@ PageType {
                             return
                         }
 
-                        InstallController.updateClientConfig(ServersUiController.processedServerId, ServersUiController.processedContainerIndex, ProtocolEnum.WireGuard)
+                        PageController.goToPage(PageEnum.PageSetupWizardInstalling);
+                        InstallController.updateContainer(ServersUiController.processedServerId, ServersUiController.processedContainerIndex, ProtocolEnum.WireGuard)
                     }
                     var noButtonFunction = function() {}
                     showQuestionDrawer(headerText, descriptionText, yesButtonText, noButtonText, yesButtonFunction, noButtonFunction)

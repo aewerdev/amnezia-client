@@ -39,8 +39,6 @@ public:
         IsSupportedRole,
         IsShareableRole,
 
-        IsUnsupportedContainerRole,
-
         InstallPageOrderRole,
         
         // Container type check roles

@@ -34,8 +34,6 @@ public:
                                QJsonObject& vpnConfiguration,
                                DockerContainer& container);
 
-    ErrorCode isConnectionSupported(const QString &serverId) const;
-
     ErrorCode openConnection(const QString &serverId);
 
     void closeConnection();
@@ -76,8 +74,6 @@ signals:
 #endif
 
 private:
-    ErrorCode defaultContainerForServer(const QString &serverId, DockerContainer &container) const;
-
     SecureServersRepository* m_serversRepository;
     SecureAppSettingsRepository* m_appSettingsRepository;
     VpnConnection* m_vpnConnection;

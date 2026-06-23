@@ -234,8 +234,6 @@ Window  {
         DrawerType2 {
             id: privateKeyPassphraseDrawer
 
-            property bool isCloseByUser: false
-
             anchors.fill: parent
             expandedHeight: root.height * 0.35 + PageController.safeAreaBottomMargin + PageController.imeHeight
 
@@ -255,11 +253,6 @@ Window  {
                     }
 
                     function onAboutToHide() {
-                        if (privateKeyPassphraseDrawer.isCloseByUser === false) {
-                            privateKeyPassphraseDrawer.isCloseByUser = true
-                            PageController.passphraseRequestDrawerClosed("")
-                        }
-
                         if (passphrase.textField.text !== "") {
                             PageController.showBusyIndicator(true)
                         }
@@ -300,7 +293,6 @@ Window  {
                     text: qsTr("Save")
 
                     clickedFunc: function() {
-                        privateKeyPassphraseDrawer.isCloseByUser = true
                         privateKeyPassphraseDrawer.closeTriggered()
                         PageController.passphraseRequestDrawerClosed(passphrase.textField.text)
                     }

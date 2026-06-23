@@ -56,17 +56,14 @@ ListViewType {
                         return
                     }
 
-                    var containerIndex = proxyDefaultServerContainersModel.mapToSource(index)
-
-                    if (!isInstalled) {
-                        ServersUiController.processedContainerIndex = containerIndex
+                    if (checked) {
+                        containersDropDown.closeTriggered()
+                        ServersUiController.setDefaultContainer(ServersUiController.defaultServerId, proxyDefaultServerContainersModel.mapToSource(index))
+                    } else {
+                        ServersUiController.processedContainerIndex = proxyDefaultServerContainersModel.mapToSource(index)
                         PageController.goToPage(PageEnum.PageSetupWizardProtocolSettings)
                         containersDropDown.closeTriggered()
-                        return
                     }
-
-                    containersDropDown.closeTriggered()
-                    ServersUiController.setDefaultContainer(ServersUiController.defaultServerId, containerIndex)
                 }
 
                 MouseArea {

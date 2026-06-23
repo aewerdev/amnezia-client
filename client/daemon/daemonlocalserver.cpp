@@ -8,7 +8,6 @@
 #include <QFileInfo>
 #include <QLocalSocket>
 
-#include "daemon.h"
 #include "daemonlocalserverconnection.h"
 #include "leakdetector.h"
 #include "logger.h"
@@ -59,11 +58,8 @@ bool DaemonLocalServer::initialize() {
 
     DaemonLocalServerConnection* connection =
         new DaemonLocalServerConnection(&m_server, socket);
-    connect(socket, &QLocalSocket::disconnected, connection, [connection]() {
-      logger.debug() << "Client connection dropped, deactivating daemon";
-      Daemon::instance()->deactivate(true);
-      connection->deleteLater();
-    });
+    connect(socket, &QLocalSocket::disconnected, connection,
+            &DaemonLocalServerConnection::deleteLater);
   });
 
   return true;

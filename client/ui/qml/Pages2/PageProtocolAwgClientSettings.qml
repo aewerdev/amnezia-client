@@ -440,7 +440,8 @@ PageType {
                     return
                 }
 
-                InstallController.updateClientConfig(ServersUiController.processedServerId, ServersUiController.processedContainerIndex, ProtocolEnum.Awg)
+                PageController.goToPage(PageEnum.PageSetupWizardInstalling);
+                InstallController.updateContainer(ServersUiController.processedServerId, ServersUiController.processedContainerIndex, ProtocolEnum.Awg)
             }
 
             var noButtonFunction = function() {}

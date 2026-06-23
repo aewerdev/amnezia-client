@@ -25,8 +25,8 @@ PageType {
 
         filters: [
             ValueFilter {
-                roleName: "serverId"
-                value: ServersUiController.processedServerId
+                roleName: "isCurrentlyProcessed"
+                value: true
             }
         ]
     }

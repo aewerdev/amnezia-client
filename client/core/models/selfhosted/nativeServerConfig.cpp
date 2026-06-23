@@ -29,11 +29,6 @@ ContainerConfig NativeServerConfig::containerConfig(DockerContainer container) c
     return containers.value(container);
 }
 
-void NativeServerConfig::updateContainerConfig(DockerContainer container, const ContainerConfig &config)
-{
-    containers[container] = config;
-}
-
 QPair<QString, QString> NativeServerConfig::getDnsPair(const QString &primaryDns, const QString &secondaryDns) const
 {
     QString d1 = dns1;

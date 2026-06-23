@@ -17,8 +17,7 @@ import "../Components"
 PageType {
     id: root
 
-    property bool isUnsupportedContainer: ContainerProps.isUnsupportedContainer(ServersUiController.processedContainerIndex)
-    property bool isClearCacheVisible: !isUnsupportedContainer && ServersUiController.isProcessedServerHasWriteAccess() && !ContainersModel.isServiceContainer(ServersUiController.processedContainerIndex)
+    property bool isClearCacheVisible: ServersUiController.isProcessedServerHasWriteAccess() && !ContainersModel.isServiceContainer(ServersUiController.processedContainerIndex)
 
     BackButtonType {
         id: backButton
@@ -53,11 +52,10 @@ PageType {
                 Layout.bottomMargin: 32
 
                 headerText: ContainersModel.getProcessedContainerName() + qsTr(" settings")
-                descriptionText: root.isUnsupportedContainer ? qsTr("This protocol is no longer supported.") : ""
             }
         }
 
-        model: root.isUnsupportedContainer ? null : ProtocolsModel
+        model: ProtocolsModel
 
         delegate: ColumnLayout {
             id: delegateContent

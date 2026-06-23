@@ -17,10 +17,6 @@ import "../Components"
 PageType {
     id: root
 
-    enableTimer: false
-
-    property bool portDirty: false
-
     function formatTransport(value) {
         if (value === "raw") return "RAW (TCP)"
         if (value === "xhttp") return "XHTTP"
@@ -43,8 +39,8 @@ PageType {
         anchors.right: parent.right
         anchors.topMargin: 20 + PageController.safeAreaTopMargin
 
-        onActiveFocusChanged: {
-            if (backButton.enabled && backButton.activeFocus) {
+        onFocusChanged: {
+            if (this.activeFocus) {
                 listView.positionViewAtBeginning()
             }
         }
@@ -63,6 +59,8 @@ PageType {
 
         delegate: ColumnLayout {
             width: listView.width
+
+            property alias focusItemId: textFieldWithHeaderType.textField
 
             spacing: 0
 
@@ -109,32 +107,13 @@ PageType {
                 Layout.rightMargin: 16
                 enabled: listView.enabled
                 headerText: qsTr("Port")
-
-                Binding {
-                    target: textFieldWithHeaderType.textField
-                    property: "text"
-                    value: port
-                    when: !textFieldWithHeaderType.textField.activeFocus
-                    restoreMode: Binding.RestoreNone
-                }
-
+                textField.text: port
                 textField.maximumLength: 5
                 textField.validator: IntValidator {
                     bottom: 1; top: 65535
                 }
-                textField.onActiveFocusChanged: {
-                    if (textField.activeFocus && textField.text === "" && port !== "") {
-                        textField.text = port
-                    }
-                }
-                textField.onTextChanged: {
-                    root.portDirty = (textField.text !== port)
-                }
                 textField.onEditingFinished: {
-                    if (textField.text !== port) {
-                        port = textField.text
-                    }
-                    root.portDirty = false
+                    if (textField.text !== port) port = textField.text
                 }
                 checkEmptyText: true
             }
@@ -193,8 +172,9 @@ PageType {
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
                 visible: listView.enabled
-                         && (XrayConfigModel.hasUnsavedChanges || root.portDirty)
-                enabled: visible && textFieldWithHeaderType.textField.text !== ""
+                         && (XrayConfigModel.hasUnsavedChanges
+                             || textFieldWithHeaderType.textField.text !== port)
+                enabled: visible && textFieldWithHeaderType.errorText === ""
                 text: qsTr("Save")
                 onClicked: function() {
                     forceActiveFocus()
@@ -213,7 +193,7 @@ PageType {
                         }
 
                         PageController.goToPage(PageEnum.PageSetupWizardInstalling);
-                        InstallController.updateServerConfig(ServersUiController.processedServerId, ServersUiController.processedContainerIndex, ProtocolEnum.Xray)
+                        InstallController.updateContainer(ServersUiController.processedServerId, ServersUiController.processedContainerIndex, ProtocolEnum.Xray)
                     }
                     var noButtonFunction = function() {
                         if (!GC.isMobile()) saveButton.forceActiveFocus()

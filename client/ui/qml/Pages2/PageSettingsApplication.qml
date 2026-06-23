@@ -108,9 +108,9 @@ PageType {
                 text: qsTr("Auto start")
                 descriptionText: qsTr("Launch the application every time the device is starts")
 
-                checked: SettingsController.autoStartEnabled
+                checked: SettingsController.isAutoStartEnabled()
                 onToggled: function() {
-                    if (checked !== SettingsController.autoStartEnabled) {
+                    if (checked !== SettingsController.isAutoStartEnabled()) {
                         SettingsController.toggleAutoStart(checked)
                     }
                 }
@@ -154,10 +154,10 @@ PageType {
                 text: qsTr("Start minimized")
                 descriptionText: qsTr("Launch application minimized (works with autostart option turned on)")
 
-                enabled: SettingsController.autoStartEnabled
+                enabled: SettingsController.isAutoStartEnabled()
                 opacity: enabled ? 1.0 : 0.5
 
-                checked: SettingsController.autoStartEnabled && SettingsController.startMinimized
+                checked: SettingsController.isAutoStartEnabled() && SettingsController.startMinimized
                 onToggled: function() {
                     if (checked !== SettingsController.startMinimized) {
                         SettingsController.toggleStartMinimized(checked)
@@ -166,7 +166,7 @@ PageType {
             }
 
             DividerType {
-                visible: !GC.isMobile() && ServersUiController.hasServersFromGatewayApi
+                visible: !GC.isMobile()
             }
 
             SwitcherType {

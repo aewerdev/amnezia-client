@@ -22,10 +22,12 @@
 
 SettingsUiController::SettingsUiController(SettingsController* settingsController,
                                          ServersController* serversController,
+                                         LanguageUiController* languageUiController,
                                          QObject *parent)
     : QObject(parent),
       m_settingsController(settingsController),
-      m_serversController(serversController)
+      m_serversController(serversController),
+      m_languageUiController(languageUiController)
 {
 #ifdef Q_OS_ANDROID
     connect(AndroidController::instance(), &AndroidController::notificationStateChanged, this, &SettingsUiController::onNotificationStateChanged);
@@ -160,13 +162,13 @@ void SettingsUiController::restoreAppConfigFromData(const QByteArray &data)
 {
     ErrorCode errorCode = m_settingsController->restoreAppConfigFromData(data);
     if (errorCode == ErrorCode::NoError) {
-        emit appLanguageChanged();
+        emit appLanguageChanged(
+                static_cast<LanguageSettings::AvailableLanguageEnum>(m_languageUiController->getCurrentLanguageIndex()));
 
         bool amneziaDnsEnabled = m_settingsController->isAmneziaDnsEnabled();
         emit amneziaDnsToggled(amneziaDnsEnabled);
 
         emit restoreBackupFinished();
-        emit autoStartChanged();
         emit startMinimizedChanged();
     } else {
         emit errorOccurred(errorCode);
@@ -181,7 +183,6 @@ QString SettingsUiController::getAppVersion()
 void SettingsUiController::clearSettings()
 {
     m_settingsController->clearSettings();
-    emit autoStartChanged();
     emit startMinimizedChanged();
     emit resetLanguageToSystem();
 
@@ -210,8 +211,9 @@ bool SettingsUiController::isAutoStartEnabled()
 void SettingsUiController::toggleAutoStart(bool enable)
 {
     m_settingsController->toggleAutoStart(enable);
-    emit autoStartChanged();
-    emit startMinimizedChanged();
+    if (!enable) {
+        emit startMinimizedChanged();
+    }
 }
 
 bool SettingsUiController::isStartMinimizedEnabled()

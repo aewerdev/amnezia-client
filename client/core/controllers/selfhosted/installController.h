@@ -34,12 +34,7 @@ public:
     ~InstallController();
 
     ErrorCode setupContainer(const ServerCredentials &credentials, DockerContainer container, ContainerConfig &config, bool isUpdate = false);
-
-    // Updates server-side container settings (admin self-hosted only): reconfigures the container over SSH.
-    ErrorCode updateServerConfig(const QString &serverId, DockerContainer container, const ContainerConfig &oldConfig, ContainerConfig &newConfig);
-
-    // Updates client-local settings only: rewrites the stored container config for any self-hosted/native server. No SSH.
-    ErrorCode updateClientConfig(const QString &serverId, DockerContainer container, ContainerConfig &newConfig);
+    ErrorCode updateContainer(const QString &serverId, DockerContainer container, const ContainerConfig &oldConfig, ContainerConfig &newConfig);
 
     ErrorCode rebootServer(const QString &serverId);
     ErrorCode removeAllContainers(const QString &serverId);

@@ -29,7 +29,6 @@ protected slots:
     void onReadyReadDataFromManagementServer();
 
 private:
-    void cleanupResources();
     QString configPath() const;
     bool openVpnProcessIsRunning() const;
     bool sendTermSignal();

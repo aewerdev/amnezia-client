@@ -434,7 +434,7 @@ PageType {
                         }
 
                         PageController.goToPage(PageEnum.PageSetupWizardInstalling);
-                        InstallController.updateServerConfig(ServersUiController.processedServerId, ServersUiController.processedContainerIndex, ProtocolEnum.OpenVpn)
+                        InstallController.updateContainer(ServersUiController.processedServerId, ServersUiController.processedContainerIndex, ProtocolEnum.OpenVpn)
                     }
                     var noButtonFunction = function() {
                         if (!GC.isMobile()) {

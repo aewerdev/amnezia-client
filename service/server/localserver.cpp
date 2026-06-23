@@ -35,20 +35,7 @@ LocalServer::LocalServer(QObject *parent) : QObject(parent),
 
     QObject::connect(m_server.data(), &QLocalServer::newConnection, this, [this]() {
         qDebug() << "LocalServer new connection";
-
-        QLocalSocket *socket = m_server->nextPendingConnection();
-        if (!socket)
-            return;
-
-        m_activeClientSocket = socket;
-
-        QObject::connect(socket, &QLocalSocket::disconnected, this, [this, socket]() {
-            qDebug() << "LocalServer: client disconnected";
-            if (m_activeClientSocket == socket)
-                m_ipcServer.resetServiceState();
-        });
-
-        m_serverNode.addHostSideConnection(socket);
+        m_serverNode.addHostSideConnection(m_server->nextPendingConnection());
 
         if (!m_isRemotingEnabled) {
             m_isRemotingEnabled = true;

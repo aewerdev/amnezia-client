@@ -71,6 +71,9 @@ namespace amnezia
         OpenSslFailed = 800,
         XrayExecutableCrashed = 803,
         Tun2SockExecutableCrashed = 804,
+        XrayServerUnreachable = 805,
+        XrayConnectivityCheckFailed = 806,
+        XrayConnectionLost = 807,
 
         // import and install errors
         ImportInvalidConfigError = 900,
@@ -79,6 +82,7 @@ namespace amnezia
         ImportBackupFileUseRestoreInstead = 903,
         RestoreBackupInvalidError = 904,
         LegacyApiV1NotSupportedError = 905,
+        LegacyContainerNotSupportedError = 906,
 
         // Android errors
         AndroidError = 1000,

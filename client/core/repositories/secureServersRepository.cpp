@@ -142,6 +142,7 @@ void SecureServersRepository::persistDefaultServerFields()
 void SecureServersRepository::loadFromStorage()
 {
     clearServerStateMaps();
+    bool needsStorageSync = false;
 
     const QJsonArray serversArray =
             QJsonDocument::fromJson(value(QStringLiteral("Servers/serversList"), QByteArray()).toByteArray())
@@ -159,9 +160,13 @@ void SecureServersRepository::loadFromStorage()
         }
         m_serverJsonById.insert(serverId, embedStorageServerId(serverId, strippedJson));
         m_orderedServerIds.append(serverId);
+        needsStorageSync = needsStorageSync || candidateId != serverId;
     }
 
     updateDefaultServerFromStorage();
+    if (needsStorageSync) {
+        syncToStorage();
+    }
 }
 
 void SecureServersRepository::syncToStorage()

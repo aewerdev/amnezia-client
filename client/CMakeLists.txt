@@ -20,8 +20,13 @@ execute_process(
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
   COMMAND git rev-parse --short HEAD
   OUTPUT_VARIABLE GIT_COMMIT_HASH
+  RESULT_VARIABLE GIT_COMMIT_HASH_RESULT
+  ERROR_QUIET
   OUTPUT_STRIP_TRAILING_WHITESPACE
 )
+if(NOT GIT_COMMIT_HASH_RESULT EQUAL 0 OR GIT_COMMIT_HASH STREQUAL "")
+    set(GIT_COMMIT_HASH "unknown")
+endif()
 
 add_definitions(-DGIT_COMMIT_HASH="${GIT_COMMIT_HASH}")
 
@@ -116,6 +121,12 @@ endif()
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/3rdparty.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/sources.cmake)
 
+set(AMNEZIA_CLIENT_SHARED_SOURCES ${SOURCES})
+set(AMNEZIA_CLIENT_SHARED_HEADERS ${HEADERS})
+set(AMNEZIA_CLIENT_SHARED_RESOURCES ${RESOURCES})
+set(AMNEZIA_CLIENT_SHARED_QRC ${QRC})
+set(AMNEZIA_CLIENT_SHARED_I18N_QRC ${I18NQRC})
+
 set(_client_include_dirs
     ${CMAKE_CURRENT_LIST_DIR}/../ipc
     ${CMAKE_CURRENT_LIST_DIR}/../common/logger
@@ -183,7 +194,6 @@ if(WIN32)
         gdi32
     )
 
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
 endif()
 
 if(APPLE)
@@ -228,6 +238,9 @@ list(APPEND SOURCES ${CMAKE_CURRENT_LIST_DIR}/main.cpp)
 
 target_link_libraries(${PROJECT} PRIVATE ${LIBS})
 target_compile_definitions(${PROJECT} PRIVATE "MZ_$<UPPER_CASE:${MZ_PLATFORM_NAME}>")
+if(WIN32)
+    target_link_options(${PROJECT} PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
+endif()
 
 target_sources(${PROJECT} PRIVATE ${SOURCES} ${HEADERS} ${RESOURCES} ${QRC} ${I18NQRC})
 
@@ -244,7 +257,7 @@ endif()
 install(TARGETS ${PROJECT}
     DESTINATION ${CMAKE_INSTALL_BINDIR}
     RUNTIME_DEPENDENCY_SET client_deps
-    COMPONENT AmneziaVPN
+    COMPONENT AmneziaVPNGui
 )
 
 if(APPLE)
@@ -267,7 +280,7 @@ install(RUNTIME_DEPENDENCY_SET client_deps
         [[^/lib.*]]
         [[^/usr/lib.*]]
     DIRECTORIES ${CONAN_RUNTIME_LIB_DIRS}
-    COMPONENT AmneziaVPN
+    COMPONENT AmneziaVPNGui
     DESTINATION "${RUNTIME_DEPS_DIR}"
 )
 
@@ -283,8 +296,122 @@ qt_generate_deploy_qml_app_script(
     DEPLOY_TOOL_OPTIONS ${deploy_tool_options}
 )
 install(SCRIPT ${QT_DEPLOY_SCRIPT}
-    COMPONENT AmneziaVPN
+    COMPONENT AmneziaVPNGui
 )
+
+if(WIN32 OR (APPLE AND NOT IOS AND NOT MACOS_NE) OR (LINUX AND NOT ANDROID))
+    set(AMNEZIA_CLI_TARGET AmneziaVPN-cli)
+    qt_add_executable(${AMNEZIA_CLI_TARGET} MANUAL_FINALIZATION)
+    set_target_properties(${AMNEZIA_CLI_TARGET} PROPERTIES OUTPUT_NAME amnezia)
+
+    target_include_directories(${AMNEZIA_CLI_TARGET} PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    )
+
+    set(AMNEZIA_CLI_REPC_DIR ${CMAKE_CURRENT_BINARY_DIR}/cli_repc)
+    file(MAKE_DIRECTORY ${AMNEZIA_CLI_REPC_DIR})
+    target_include_directories(${AMNEZIA_CLI_TARGET} BEFORE PRIVATE ${AMNEZIA_CLI_REPC_DIR})
+
+    set(AMNEZIA_CLI_REPLICA_HEADERS)
+    foreach(rep_file
+            ${CMAKE_CURRENT_LIST_DIR}/../ipc/ipc_interface.rep
+            ${CMAKE_CURRENT_LIST_DIR}/../ipc/ipc_process_interface.rep)
+        get_filename_component(rep_name ${rep_file} NAME_WE)
+        set(replica_header ${AMNEZIA_CLI_REPC_DIR}/rep_${rep_name}_replica.h)
+        add_custom_command(
+            OUTPUT ${replica_header}
+            COMMAND Qt6::repc -o replica ${rep_file} ${replica_header}
+            MAIN_DEPENDENCY ${rep_file}
+            DEPENDS Qt6::repc
+            VERBATIM
+        )
+        list(APPEND AMNEZIA_CLI_REPLICA_HEADERS ${replica_header})
+    endforeach()
+    qt6_wrap_cpp(AMNEZIA_CLI_REPLICA_MOCS ${AMNEZIA_CLI_REPLICA_HEADERS} TARGET ${AMNEZIA_CLI_TARGET})
+    set_source_files_properties(
+        ${AMNEZIA_CLI_REPLICA_HEADERS}
+        ${AMNEZIA_CLI_REPLICA_MOCS}
+        PROPERTIES GENERATED TRUE SKIP_AUTOGEN TRUE
+    )
+
+    target_link_libraries(${AMNEZIA_CLI_TARGET} PRIVATE ${LIBS})
+    target_compile_definitions(${AMNEZIA_CLI_TARGET} PRIVATE
+        "MZ_$<UPPER_CASE:${MZ_PLATFORM_NAME}>"
+        AMNEZIA_CLI
+    )
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_compile_definitions(${AMNEZIA_CLI_TARGET} PRIVATE "MZ_DEBUG")
+    endif()
+
+    if(WIN32)
+        target_link_options(${AMNEZIA_CLI_TARGET} PRIVATE /SUBSYSTEM:CONSOLE /ENTRY:mainCRTStartup)
+    endif()
+
+    target_sources(${AMNEZIA_CLI_TARGET} PRIVATE
+        ${AMNEZIA_CLIENT_SHARED_SOURCES}
+        ${AMNEZIA_CLIENT_SHARED_HEADERS}
+        ${AMNEZIA_CLIENT_SHARED_RESOURCES}
+        ${AMNEZIA_CLIENT_SHARED_QRC}
+        ${AMNEZIA_CLIENT_SHARED_I18N_QRC}
+        ${AMNEZIA_CLI_REPLICA_HEADERS}
+        ${AMNEZIA_CLI_REPLICA_MOCS}
+        ${CMAKE_CURRENT_LIST_DIR}/cli/main.cpp
+    )
+
+    if(COMMAND qt_import_qml_plugins)
+        qt_import_qml_plugins(${AMNEZIA_CLI_TARGET})
+    endif()
+    if(COMMAND qt_finalize_executable)
+        qt_finalize_executable(${AMNEZIA_CLI_TARGET})
+    else()
+        qt_finalize_target(${AMNEZIA_CLI_TARGET})
+    endif()
+
+    add_custom_command(TARGET ${AMNEZIA_CLI_TARGET} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:${AMNEZIA_CLI_TARGET}>"
+            "$<TARGET_FILE_DIR:${AMNEZIA_CLI_TARGET}>/vpn$<TARGET_FILE_SUFFIX:${AMNEZIA_CLI_TARGET}>"
+    )
+
+    install(TARGETS ${AMNEZIA_CLI_TARGET}
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
+        RUNTIME_DEPENDENCY_SET cli_deps
+        COMPONENT AmneziaVPNCore
+    )
+    install(PROGRAMS
+        "$<TARGET_FILE_DIR:${AMNEZIA_CLI_TARGET}>/vpn$<TARGET_FILE_SUFFIX:${AMNEZIA_CLI_TARGET}>"
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
+        COMPONENT AmneziaVPNCore
+    )
+
+    install(RUNTIME_DEPENDENCY_SET cli_deps
+        PRE_EXCLUDE_REGEXES
+            [[api-ms-win-.*]]
+            [[ext-ms-.*]]
+            [[kernel32\.dll]]
+            [[hvsifiletrust\.dll]]
+            [[libc\.so\..*]] [[libgcc_s\.so\..*]] [[libm\.so\..*]] [[libstdc\+\+\.so\..*]]
+            [[.*\.framework]]
+            [[^[Qq]t.*]]
+        POST_EXCLUDE_REGEXES
+            [[^.*[\\/]system32[\\/].*\.dll$]]
+            [[^/lib.*]]
+            [[^/usr/lib.*]]
+        DIRECTORIES ${CONAN_RUNTIME_LIB_DIRS}
+        COMPONENT AmneziaVPNCore
+        DESTINATION "${RUNTIME_DEPS_DIR}"
+    )
+
+    qt_generate_deploy_app_script(
+        TARGET ${AMNEZIA_CLI_TARGET}
+        OUTPUT_SCRIPT AMNEZIA_CLI_DEPLOY_SCRIPT
+        NO_UNSUPPORTED_PLATFORM_ERROR
+        DEPLOY_TOOL_OPTIONS ${deploy_tool_options}
+    )
+    install(SCRIPT ${AMNEZIA_CLI_DEPLOY_SCRIPT}
+        COMPONENT AmneziaVPNCore
+    )
+endif()
 
 if (APPLE AND NOT IOS AND NOT MACOS_NE)
     list(APPEND OVPN_SCRIPTS "${CMAKE_SOURCE_DIR}/deploy/data/macos/update-resolv-conf.sh")
@@ -306,7 +433,7 @@ if(OVPN_SCRIPTS)
 
     install(FILES ${OVPN_SCRIPTS}
         DESTINATION ${CMAKE_INSTALL_BINDIR}
-        COMPONENT AmneziaVPN
+        COMPONENT AmneziaVPNCore
         PERMISSIONS
             OWNER_READ OWNER_EXECUTE
             GROUP_READ GROUP_EXECUTE

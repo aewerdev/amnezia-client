@@ -19,6 +19,8 @@ public:
     static bool init(bool isServiceLogger);
     static void deInit();
 
+    static void setConsoleOutputEnabled(bool enabled);
+
     static bool setServiceLogsEnabled(bool enabled);
 
     static bool openLogsFolder(bool isServiceLogger);
@@ -106,6 +108,7 @@ private:
     static QTextStream m_textStream;
     static QString m_logFileName;
     static QString m_serviceLogFileName;
+    static bool m_consoleOutputEnabled;
 
     friend void messageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg);
 

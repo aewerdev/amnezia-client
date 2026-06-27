@@ -126,6 +126,12 @@ deploy/build.sh
 # Build executables and installers for the host platform
 deploy/build.sh --installer all
 
+# Build Linux artifacts for several distro targets
+deploy/build-linux-matrix.sh --targets ubuntu,debian,arch,nix --mode container
+
+# Build Debian/Ubuntu packages on the current Linux host
+deploy/build-linux-matrix.sh --targets deb --mode host --generators DEB
+
 # Build Android APK and AAB
 deploy/build.sh -t android --aab
 

@@ -12,6 +12,8 @@ winbuild*.bat
 .vscode/
 .venv/
 .cursor*
+conan-cache/
+deploy/artifacts/
 
 
 # Qt-es

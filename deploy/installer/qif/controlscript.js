@@ -119,7 +119,7 @@ function requestToQuit(installer,gui)
     gui.clickButton(buttons.CancelButton);
 
     if (runningOnWindows()) {
-        installer.setCancelled();
+        installer.setCanceled();
     }
 }
 
@@ -157,7 +157,9 @@ Controller.prototype.StartMenuDirectoryPageCallback = function()
 
 Controller.prototype.ComponentSelectionPageCallback = function()
 {
-    gui.clickButton(buttons.NextButton);
+    if (!installer.isInstaller()) {
+        gui.clickButton(buttons.NextButton);
+    }
 }
 
 Controller.prototype.ReadyForInstallationPageCallback = function()
@@ -236,7 +238,7 @@ function Controller () {
     }
 
     if (installer.isInstaller()) {
-        installer.setDefaultPageVisible(QInstaller.ComponentSelection, false);
+        installer.setDefaultPageVisible(QInstaller.ComponentSelection, true);
         installer.setDefaultPageVisible(QInstaller.TargetDirectory, false);
         installer.setDefaultPageVisible(QInstaller.StartMenuDirectoryPage, false);
         installer.setDefaultPageVisible(QInstaller.LicenseCheck, false);
@@ -276,7 +278,7 @@ function Controller () {
 
                     if (Number(resultArray[1]) !== 0) {
                         console.log("Uninstallation aborted by user");
-                        installer.setCancelled();
+                        installer.setCanceled();
                         return;
                     } else {
                         for (var i = 0; i < 300; i++) {
@@ -292,7 +294,7 @@ function Controller () {
 
             } else {
                 console.log("Request to quit from user");
-                installer.setCancelled();
+                installer.setCanceled();
                 return;
             }
         }

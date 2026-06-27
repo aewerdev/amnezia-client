@@ -14,7 +14,7 @@ set(CPACK_POST_BUILD_SCRIPTS        ${CMAKE_CURRENT_LIST_DIR}/sign_packages.cmak
 set(CPACK_PROJECT_CONFIG_FILE       ${CMAKE_CURRENT_LIST_DIR}/CPackOptions.cmake)
 set(CPACK_RESOURCE_FILE_LICENSE     ${CMAKE_SOURCE_DIR}/deploy/data/LICENSE.txt)
 
-list(PREPEND CPACK_COMPONENTS_ALL AmneziaVPN)
+set(CPACK_COMPONENTS_ALL AmneziaVPNCore AmneziaVPNGui)
 
 if(APPLE)
     set(CPACK_GENERATOR productbuild)
@@ -56,12 +56,16 @@ list(APPEND CMAKE_MODULE_PATH           ${CMAKE_SOURCE_DIR}/deploy/data/macos)
 if(LINUX AND NOT ANDROID)
     install(FILES
         ${CMAKE_SOURCE_DIR}/deploy/data/linux/AmneziaVPN.service
-        ${CMAKE_SOURCE_DIR}/deploy/data/linux/AmneziaVPN.png
-        ${CMAKE_SOURCE_DIR}/deploy/data/linux/AmneziaVPN.desktop
         ${CMAKE_SOURCE_DIR}/deploy/data/linux/post_install.sh
         ${CMAKE_SOURCE_DIR}/deploy/data/linux/post_uninstall.sh
         DESTINATION "."
-        COMPONENT AmneziaVPN
+        COMPONENT AmneziaVPNCore
+    )
+    install(FILES
+        ${CMAKE_SOURCE_DIR}/deploy/data/linux/AmneziaVPN.png
+        ${CMAKE_SOURCE_DIR}/deploy/data/linux/AmneziaVPN.desktop
+        DESTINATION "."
+        COMPONENT AmneziaVPNGui
     )
 endif()
 
@@ -70,7 +74,7 @@ if(WIN32)
         ${CMAKE_SOURCE_DIR}/deploy/data/windows/post_install.cmd
         ${CMAKE_SOURCE_DIR}/deploy/data/windows/post_uninstall.cmd
         DESTINATION "."
-        COMPONENT AmneziaVPN
+        COMPONENT AmneziaVPNCore
     )
 
     set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
@@ -88,17 +92,42 @@ endif()
 if (APPLE AND NOT IOS AND NOT MACOS_NE)
     install(FILES ${CMAKE_SOURCE_DIR}/deploy/data/macos/AmneziaVPN.plist
         DESTINATION "AmneziaVPN.app/Contents/Resources"
-        COMPONENT AmneziaVPN
+        COMPONENT AmneziaVPNGui
     )
 endif()
 
 include(CPackIFW)
-cpack_ifw_configure_component(AmneziaVPN
+cpack_add_component(AmneziaVPNCore
+    DISPLAY_NAME "CLI and VPN service"
+    DESCRIPTION "Command-line client, VPN service, drivers, and protocol helpers."
+    REQUIRED
+)
+cpack_add_component(AmneziaVPNGui
+    DISPLAY_NAME "Graphical interface"
+    DESCRIPTION "Desktop graphical client and shortcuts."
+    DEPENDS AmneziaVPNCore
+)
+
+cpack_ifw_configure_component(AmneziaVPNCore
     VERSION ${AMNEZIAVPN_VERSION}
     RELEASE_DATE ${RELEASE_DATE}
+    DISPLAY_NAME "CLI and VPN service"
+    DESCRIPTION "Command-line client, VPN service, drivers, and protocol helpers."
     REQUIRES_ADMIN_RIGHTS
     FORCED_INSTALLATION
-    SCRIPT ${CMAKE_SOURCE_DIR}/deploy/installer/qif/componentscript.js
+    SCRIPT ${CMAKE_SOURCE_DIR}/deploy/installer/qif/component_core.js
+    SORTING_PRIORITY 100
+)
+cpack_ifw_configure_component(AmneziaVPNGui
+    VERSION ${AMNEZIAVPN_VERSION}
+    RELEASE_DATE ${RELEASE_DATE}
+    DISPLAY_NAME "Graphical interface"
+    DESCRIPTION "Desktop graphical client and shortcuts."
+    REQUIRES_ADMIN_RIGHTS
+    DEPENDS AmneziaVPNCore
+    DEFAULT TRUE
+    SCRIPT ${CMAKE_SOURCE_DIR}/deploy/installer/qif/component_gui.js
+    SORTING_PRIORITY 90
 )
 
 include(CPack)

@@ -24,6 +24,7 @@ QFile Logger::m_file;
 QTextStream Logger::m_textStream;
 QString Logger::m_logFileName = QString("%1.log").arg(APPLICATION_NAME);
 QString Logger::m_serviceLogFileName = QString("%1.log").arg(SERVICE_NAME);
+bool Logger::m_consoleOutputEnabled = true;
 
 void messageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
@@ -86,6 +87,11 @@ void Logger::deInit()
 {
     m_textStream.setDevice(nullptr);
     m_file.close();
+}
+
+void Logger::setConsoleOutputEnabled(bool enabled)
+{
+    m_consoleOutputEnabled = enabled;
 }
 
 bool Logger::setServiceLogsEnabled(bool enabled)
@@ -248,8 +254,10 @@ Logger::LogStreamer::~LogStreamer()
         logToFile << message << Qt::endl << Qt::flush;
     }
 
-    QTextStream logToOutput((m_logLevel == LogLevel::Error) ? stderr : stdout);
-    logToOutput << message << Qt::endl << Qt::flush;
+    if (m_consoleOutputEnabled) {
+        QTextStream logToOutput((m_logLevel == LogLevel::Error) ? stderr : stdout);
+        logToOutput << message << Qt::endl << Qt::flush;
+    }
 
     delete m_data;
 }

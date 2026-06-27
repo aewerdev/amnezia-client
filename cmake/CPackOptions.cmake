@@ -1,4 +1,4 @@
-set(CPACK_COMPONENTS_ALL AmneziaVPN)
+set(CPACK_COMPONENTS_ALL AmneziaVPNCore AmneziaVPNGui)
 
 if (CPACK_GENERATOR STREQUAL productbuild)
     list(APPEND CPACK_COMPONENTS_ALL Uninstall)

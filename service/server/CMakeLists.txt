@@ -331,7 +331,7 @@ qt_add_repc_sources(${PROJECT} ${CMAKE_CURRENT_LIST_DIR}/../../ipc/ipc_process_i
 if(APPLE)
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/deploy/data/macos/pf
         DESTINATION ${CMAKE_INSTALL_BINDIR}
-        COMPONENT AmneziaVPN
+        COMPONENT AmneziaVPNCore
     )
     add_custom_command(TARGET ${PROJECT} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E $<IF:$<CONFIG:Debug>,copy_directory,true>
@@ -398,7 +398,7 @@ if(WIN32)
     # to the files so just omit it for it
     install(FILES ${CONAN_EXECS}
         DESTINATION ${CMAKE_INSTALL_BINDIR}
-        COMPONENT AmneziaVPN
+        COMPONENT AmneziaVPNCore
     )
 else()
     set(CONAN_EXECS_INSTALL ${CONAN_EXECS})
@@ -407,7 +407,7 @@ else()
     endif()
     install(FILES ${CONAN_EXECS_INSTALL}
         DESTINATION ${CMAKE_INSTALL_BINDIR}
-        COMPONENT AmneziaVPN
+        COMPONENT AmneziaVPNCore
         PERMISSIONS
             OWNER_READ OWNER_EXECUTE
             GROUP_READ GROUP_EXECUTE
@@ -416,7 +416,7 @@ else()
 endif()
 install(FILES ${CONAN_BINS}
     DESTINATION ${CMAKE_INSTALL_BINDIR}
-    COMPONENT AmneziaVPN
+    COMPONENT AmneziaVPNCore
 )
 
 # install openvpn via the service's dep set to ship its openssl, then
@@ -460,7 +460,7 @@ if (WIN32)
     )
     install(DIRECTORY "${TAP_WINDOWS6_BIN}/"
         DESTINATION "${CMAKE_INSTALL_BINDIR}/tap"
-        COMPONENT AmneziaVPN
+        COMPONENT AmneziaVPNCore
     )
 
     find_package(win-split-tunnel REQUIRED)
@@ -471,7 +471,7 @@ if (WIN32)
     )
     install(DIRECTORY "${WIN_SPLIT_TUNNEL_BIN}/"
         DESTINATION ${CMAKE_INSTALL_BINDIR}
-        COMPONENT AmneziaVPN
+        COMPONENT AmneziaVPNCore
     )
 endif()
 
@@ -479,7 +479,7 @@ endif()
 install(TARGETS ${PROJECT}
     DESTINATION ${CMAKE_INSTALL_BINDIR}
     RUNTIME_DEPENDENCY_SET service_deps
-    COMPONENT AmneziaVPN
+    COMPONENT AmneziaVPNCore
 )
 
 if(APPLE)
@@ -502,7 +502,7 @@ install(RUNTIME_DEPENDENCY_SET service_deps
         [[^/lib.*]]
         [[^/usr/lib.*]]
     DIRECTORIES ${CONAN_RUNTIME_LIB_DIRS}
-    COMPONENT AmneziaVPN
+    COMPONENT AmneziaVPNCore
     DESTINATION "${RUNTIME_DEPS_DIR}"
 )
 
@@ -512,5 +512,5 @@ qt_generate_deploy_app_script(
     NO_UNSUPPORTED_PLATFORM_ERROR
 )
 install(SCRIPT ${QT_DEPLOY_SCRIPT}
-    COMPONENT AmneziaVPN
+    COMPONENT AmneziaVPNCore
 )

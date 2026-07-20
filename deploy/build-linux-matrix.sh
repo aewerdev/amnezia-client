@@ -23,6 +23,7 @@ DRY_RUN=0
 KEEP_GOING=0
 JOBS="${JOBS:-}"
 CMAKE_GENERATOR="${CMAKE_GENERATOR:-Ninja}"
+AMNEZIA_CONAN_USE_REMOTE="${AMNEZIA_CONAN_USE_REMOTE:-ON}"
 
 usage() {
     cat <<'EOF'
@@ -58,6 +59,8 @@ Options:
   --no-install-qt              Never install Qt/IFW automatically
   --install-deps               Install distro build dependencies
   --no-install-deps            Do not install distro build dependencies
+  --amnezia-remote             Use the Amnezia Conan binary remote (default)
+  --no-amnezia-remote          Build missing Conan packages from source
   --force                      Remove the selected target build dir first
   --jobs <n>                   Parallel build jobs
   --keep-going                 Continue other targets after a target fails
@@ -71,6 +74,7 @@ Examples:
 
 Useful environment:
   QT_INSTALL_DIR, QT_ROOT_PATH, QIF_ROOT_PATH, CMAKE_PREFIX_PATH, CONAN_HOME
+  AMNEZIA_CONAN_USE_REMOTE=ON|OFF, NIX_FLAKE_REF=path:/repo#default
   NIX_SHELL_PACKAGES="nixpkgs#cmake nixpkgs#ninja ..."
 EOF
 }
@@ -303,6 +307,19 @@ ensure_qt() {
     echo "$prefix"
 }
 
+cmake_prefix_with_qt() {
+    local qt_prefix="$1"
+    local current_prefix="${CMAKE_PREFIX_PATH:-}"
+
+    if [[ -z "$current_prefix" ]]; then
+        echo "$qt_prefix"
+    elif [[ ":$current_prefix:" == *":$qt_prefix:"* ]]; then
+        echo "$current_prefix"
+    else
+        echo "$qt_prefix:$current_prefix"
+    fi
+}
+
 find_qif_root() {
     local candidates=()
     [[ -n "$QIF_ROOT_PATH" ]] && candidates+=("$QIF_ROOT_PATH")
@@ -396,6 +413,9 @@ smoke_cli() {
 build_host_target() {
     local target="$1"
     local qt_prefix
+    local cmake_prefix
+    local conan_force_build="${AMNEZIA_CONAN_FORCE_BUILD:-}"
+    local platform_cmake_args=()
     local build_dir="$BUILD_ROOT/$target/$BUILD_TYPE"
     local conan_home="${CONAN_HOME:-$BUILD_ROOT/conan/$target}"
     local generator
@@ -405,6 +425,19 @@ build_host_target() {
     install_deps "$target"
     ensure_python_tooling no
     qt_prefix="$(ensure_qt)"
+    cmake_prefix="$(cmake_prefix_with_qt "$qt_prefix")"
+
+    # Conan Center build tools are generic Linux binaries. Rebuild native tools
+    # with the Nix toolchain so their ELF interpreters point into the Nix store.
+    if [[ "$target" == "nix" && -z "$conan_force_build" ]]; then
+        conan_force_build="m4/*;ninja/*;pkgconf/*"
+    fi
+    if [[ "$target" == "nix" ]]; then
+        platform_cmake_args+=(
+            -DAMNEZIA_NIXOS_BUILD=ON
+            -DQT_DEPLOY_FORCE_ADJUST_RPATHS=OFF
+        )
+    fi
 
     if [[ "$(id -u)" == "0" ]] && command -v git >/dev/null 2>&1; then
         git config --global --add safe.directory "$SOURCE_DIR" 2>/dev/null || true
@@ -417,13 +450,16 @@ build_host_target() {
     run mkdir -p "$build_dir" "$conan_home"
 
     export CONAN_HOME="$conan_home"
-    export CMAKE_PREFIX_PATH="$qt_prefix"
+    export CMAKE_PREFIX_PATH="$cmake_prefix"
 
     run cmake -S "$SOURCE_DIR" -B "$build_dir" \
         -G "$CMAKE_GENERATOR" \
         -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-        -DCMAKE_PREFIX_PATH="$qt_prefix" \
-        -DCONAN_INSTALL_BUILD_CONFIGURATIONS="$BUILD_TYPE"
+        -DCMAKE_PREFIX_PATH="$cmake_prefix" \
+        -DAMNEZIA_CONAN_USE_REMOTE="$AMNEZIA_CONAN_USE_REMOTE" \
+        -DAMNEZIA_CONAN_FORCE_BUILD="$conan_force_build" \
+        -DCONAN_INSTALL_BUILD_CONFIGURATIONS="$BUILD_TYPE" \
+        "${platform_cmake_args[@]}"
 
     run cmake --build "$build_dir" --config "$BUILD_TYPE" --parallel "$(jobs)"
     smoke_cli "$build_dir"
@@ -459,6 +495,7 @@ run_container_target() {
     local extra_args=()
 
     [[ "$FORCE" -eq 1 ]] && extra_args+=(--force)
+    [[ "$AMNEZIA_CONAN_USE_REMOTE" == "OFF" ]] && extra_args+=(--no-amnezia-remote)
 
     image="$(target_image "$target")" || die "Target '$target' does not have a container image"
     runtime="$(detect_container_runtime)" || die "Docker/Podman not found. Install one or use --mode host."
@@ -488,26 +525,40 @@ run_container_target() {
 run_nix_target() {
     ensure_command nix "Install Nix or skip the nix target."
 
-    local packages_string="${NIX_SHELL_PACKAGES:-nixpkgs#cmake nixpkgs#ninja nixpkgs#gcc nixpkgs#git nixpkgs#python3 nixpkgs#conan nixpkgs#qt6.full nixpkgs#qt6.qttools}"
+    local packages_string="${NIX_SHELL_PACKAGES:-nixpkgs#cmake nixpkgs#ninja nixpkgs#gcc nixpkgs#git nixpkgs#python3 nixpkgs#conan nixpkgs#pkg-config nixpkgs#patchelf nixpkgs#qt6.qtbase nixpkgs#qt6.qtdeclarative nixpkgs#qt6.qtsvg nixpkgs#qt6.qttools nixpkgs#qt6.qt5compat nixpkgs#qt6.qtremoteobjects nixpkgs#qt6.qtshadertools nixpkgs#qt6.qtimageformats nixpkgs#qt6.qtwayland}"
     local packages=()
     local extra_args=()
+    local inner_args=()
 
     [[ "$FORCE" -eq 1 ]] && extra_args+=(--force)
+    [[ "$AMNEZIA_CONAN_USE_REMOTE" == "OFF" ]] && extra_args+=(--no-amnezia-remote)
+
+    inner_args=(
+        --mode host
+        --targets nix
+        --build-type "$BUILD_TYPE"
+        --generators "$GENERATORS_RAW"
+        --no-install-deps
+        --no-install-qt
+        --jobs "$(jobs)"
+        "${extra_args[@]}"
+    )
+
+    if [[ -f "$SOURCE_DIR/flake.nix" && -z "${NIX_SHELL_PACKAGES:-}" ]]; then
+        local flake_ref="${NIX_FLAKE_REF:-path:$SOURCE_DIR#default}"
+        log "Running nix target through nix develop ($flake_ref)"
+        run nix --extra-experimental-features "nix-command flakes" develop "$flake_ref" --command \
+            bash "$SOURCE_DIR/deploy/build-linux-matrix.sh" "${inner_args[@]}"
+        return
+    fi
+
     while IFS= read -r package; do
         [[ -n "$package" ]] && packages+=("$package")
     done < <(split_csv "$packages_string")
 
     log "Running nix target through nix shell"
     run nix --extra-experimental-features "nix-command flakes" shell "${packages[@]}" --command \
-        bash "$SOURCE_DIR/deploy/build-linux-matrix.sh" \
-            --mode host \
-            --targets nix \
-            --build-type "$BUILD_TYPE" \
-            --generators "$GENERATORS_RAW" \
-            --no-install-deps \
-            --no-install-qt \
-            --jobs "$(jobs)" \
-            "${extra_args[@]}"
+        bash "$SOURCE_DIR/deploy/build-linux-matrix.sh" "${inner_args[@]}"
 }
 
 run_target() {
@@ -576,6 +627,8 @@ while [[ $# -gt 0 ]]; do
         --no-install-qt) INSTALL_QT="no"; shift ;;
         --install-deps) INSTALL_DEPS="yes"; shift ;;
         --no-install-deps) INSTALL_DEPS="no"; shift ;;
+        --amnezia-remote) AMNEZIA_CONAN_USE_REMOTE="ON"; shift ;;
+        --no-amnezia-remote) AMNEZIA_CONAN_USE_REMOTE="OFF"; shift ;;
         --force) FORCE=1; shift ;;
         --jobs|-j) JOBS="$2"; shift 2 ;;
         --keep-going) KEEP_GOING=1; shift ;;
@@ -585,6 +638,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+case "${AMNEZIA_CONAN_USE_REMOTE^^}" in
+    ON|TRUE|YES|1) AMNEZIA_CONAN_USE_REMOTE="ON" ;;
+    OFF|FALSE|NO|0) AMNEZIA_CONAN_USE_REMOTE="OFF" ;;
+    *) die "AMNEZIA_CONAN_USE_REMOTE must be ON or OFF" ;;
+esac
+
 mapfile -t TARGETS < <(parse_targets "$TARGETS_RAW")
 [[ "${#TARGETS[@]}" -gt 0 ]] || die "No targets selected"
 
@@ -592,9 +651,17 @@ trap fix_container_ownership EXIT
 
 status=0
 for target in "${TARGETS[@]}"; do
-    if ! run_target "$target"; then
-        status=1
-        [[ "$KEEP_GOING" -eq 1 ]] || exit "$status"
+    if [[ "$KEEP_GOING" -eq 1 ]]; then
+        set +e
+        (
+            set -Eeuo pipefail
+            run_target "$target"
+        )
+        target_status=$?
+        set -e
+        [[ "$target_status" -eq 0 ]] || status=1
+    else
+        run_target "$target"
     fi
 done
 

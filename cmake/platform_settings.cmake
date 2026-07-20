@@ -28,11 +28,21 @@ if (WIN32 OR APPLE)
     set(CMAKE_INSTALL_BINDIR ".")
 endif()
 
+option(AMNEZIA_NIXOS_BUILD "Use NixOS-compatible Qt deployment" OFF)
+
 # Apple NE-based apps do not support any dylibs or variations
 # So Qt would use the openssl bundled with system, not application
 if (NOT(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR (APPLE AND MACOS_NE)))
     list(APPEND _CONAN_INSTALL_ARGS "-o=openssl/*:shared=True")
 endif()
+
+set(AMNEZIA_CONAN_FORCE_BUILD "" CACHE STRING
+    "Semicolon-separated Conan package patterns to build from source")
+foreach(_conan_package_pattern IN LISTS AMNEZIA_CONAN_FORCE_BUILD)
+    if(NOT _conan_package_pattern STREQUAL "")
+        list(APPEND _CONAN_INSTALL_ARGS "--build=${_conan_package_pattern}")
+    endif()
+endforeach()
 
 list(PREPEND _CONAN_INSTALL_ARGS "--build=missing")
 list(JOIN _CONAN_INSTALL_ARGS ";" _CONAN_INSTALL_ARGS_JOINED)

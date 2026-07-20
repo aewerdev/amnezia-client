@@ -48,6 +48,17 @@ endif()
 find_package(Qt6 REQUIRED COMPONENTS ${PACKAGES})
 find_package(OpenSSL REQUIRED)
 
+if(AMNEZIA_NIXOS_BUILD)
+    find_package(Qt6QSvgPlugin REQUIRED CONFIG
+        PATHS "${Qt6Svg_DIR}/../Qt6Gui"
+        NO_DEFAULT_PATH
+    )
+    find_package(Qt6QSvgIconPlugin REQUIRED CONFIG
+        PATHS "${Qt6Svg_DIR}/../Qt6Gui"
+        NO_DEFAULT_PATH
+    )
+endif()
+
 set(LIBS ${LIBS}
     Qt6::Core Qt6::Gui
     Qt6::Network Qt6::Xml Qt6::RemoteObjects
@@ -289,15 +300,41 @@ if(WIN32)
     set(deploy_tool_options "--force-openssl --force")
 endif()
 
-qt_generate_deploy_qml_app_script(
-    TARGET ${PROJECT}
-    OUTPUT_SCRIPT QT_DEPLOY_SCRIPT
-    NO_UNSUPPORTED_PLATFORM_ERROR
-    DEPLOY_TOOL_OPTIONS ${deploy_tool_options}
-)
+if(AMNEZIA_NIXOS_BUILD)
+    qt_generate_deploy_script(
+        TARGET ${PROJECT}
+        OUTPUT_SCRIPT QT_DEPLOY_SCRIPT
+        CONTENT "
+qt6_deploy_qml_imports(TARGET ${PROJECT} PLUGINS_FOUND plugins_found)
+qt6_deploy_runtime_dependencies(
+    EXECUTABLE \"$<TARGET_FILE:${PROJECT}>\"
+    ADDITIONAL_MODULES \\\${plugins_found}
+    GENERATE_QT_CONF
+    EXCLUDE_PLUGINS qgtk3
+    EXCLUDE_PLUGIN_TYPES sqldrivers
+)"
+    )
+else()
+    qt_generate_deploy_qml_app_script(
+        TARGET ${PROJECT}
+        OUTPUT_SCRIPT QT_DEPLOY_SCRIPT
+        NO_UNSUPPORTED_PLATFORM_ERROR
+        DEPLOY_TOOL_OPTIONS ${deploy_tool_options}
+    )
+endif()
 install(SCRIPT ${QT_DEPLOY_SCRIPT}
     COMPONENT AmneziaVPNGui
 )
+if(AMNEZIA_NIXOS_BUILD)
+    install(FILES "$<TARGET_FILE:Qt6::QSvgPlugin>"
+        DESTINATION "${QT6_INSTALL_PLUGINS}/imageformats"
+        COMPONENT AmneziaVPNGui
+    )
+    install(FILES "$<TARGET_FILE:Qt6::QSvgIconPlugin>"
+        DESTINATION "${QT6_INSTALL_PLUGINS}/iconengines"
+        COMPONENT AmneziaVPNGui
+    )
+endif()
 
 if(WIN32 OR (APPLE AND NOT IOS AND NOT MACOS_NE) OR (LINUX AND NOT ANDROID))
     set(AMNEZIA_CLI_TARGET AmneziaVPN-cli)
@@ -402,12 +439,26 @@ if(WIN32 OR (APPLE AND NOT IOS AND NOT MACOS_NE) OR (LINUX AND NOT ANDROID))
         DESTINATION "${RUNTIME_DEPS_DIR}"
     )
 
-    qt_generate_deploy_app_script(
-        TARGET ${AMNEZIA_CLI_TARGET}
-        OUTPUT_SCRIPT AMNEZIA_CLI_DEPLOY_SCRIPT
-        NO_UNSUPPORTED_PLATFORM_ERROR
-        DEPLOY_TOOL_OPTIONS ${deploy_tool_options}
-    )
+    if(AMNEZIA_NIXOS_BUILD)
+        qt_generate_deploy_script(
+            TARGET ${AMNEZIA_CLI_TARGET}
+            OUTPUT_SCRIPT AMNEZIA_CLI_DEPLOY_SCRIPT
+            CONTENT "
+qt6_deploy_runtime_dependencies(
+    EXECUTABLE \"$<TARGET_FILE:${AMNEZIA_CLI_TARGET}>\"
+    GENERATE_QT_CONF
+    EXCLUDE_PLUGINS qgtk3
+    EXCLUDE_PLUGIN_TYPES sqldrivers
+)"
+        )
+    else()
+        qt_generate_deploy_app_script(
+            TARGET ${AMNEZIA_CLI_TARGET}
+            OUTPUT_SCRIPT AMNEZIA_CLI_DEPLOY_SCRIPT
+            NO_UNSUPPORTED_PLATFORM_ERROR
+            DEPLOY_TOOL_OPTIONS ${deploy_tool_options}
+        )
+    endif()
     install(SCRIPT ${AMNEZIA_CLI_DEPLOY_SCRIPT}
         COMPONENT AmneziaVPNCore
     )

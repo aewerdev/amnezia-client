@@ -21,6 +21,29 @@ execute_process(
     COMMAND ${CONAN_COMMAND} export "${CMAKE_SOURCE_DIR}/recipes/go" --version 1.23.12
 )
 
-execute_process(
-    COMMAND ${CONAN_COMMAND} remote add amnezia "https://artifactory.amnezia.org/artifactory/api/conan/client-prebuilts" --force
+set(
+    AMNEZIA_CONAN_REMOTE_URL
+    "https://artifactory.amnezia.org/artifactory/api/conan/client-prebuilts"
+    CACHE STRING
+    "Amnezia Conan binary remote URL"
 )
+option(AMNEZIA_CONAN_USE_REMOTE "Use the Amnezia Conan binary remote" ON)
+
+execute_process(
+    COMMAND ${CONAN_COMMAND} remote add amnezia "${AMNEZIA_CONAN_REMOTE_URL}" --force
+    RESULT_VARIABLE AMNEZIA_CONAN_REMOTE_RESULT
+)
+if(NOT AMNEZIA_CONAN_REMOTE_RESULT EQUAL 0)
+    message(FATAL_ERROR "Unable to configure the Amnezia Conan remote")
+endif()
+
+if(NOT AMNEZIA_CONAN_USE_REMOTE)
+    execute_process(
+        COMMAND ${CONAN_COMMAND} remote disable amnezia
+        RESULT_VARIABLE AMNEZIA_CONAN_DISABLE_REMOTE_RESULT
+    )
+    if(NOT AMNEZIA_CONAN_DISABLE_REMOTE_RESULT EQUAL 0)
+        message(FATAL_ERROR "Unable to disable the Amnezia Conan remote")
+    endif()
+    message(STATUS "Amnezia Conan remote disabled; missing packages will build from source")
+endif()

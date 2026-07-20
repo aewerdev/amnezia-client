@@ -506,11 +506,25 @@ install(RUNTIME_DEPENDENCY_SET service_deps
     DESTINATION "${RUNTIME_DEPS_DIR}"
 )
 
-qt_generate_deploy_app_script(
-    TARGET ${PROJECT}
-    OUTPUT_SCRIPT QT_DEPLOY_SCRIPT
-    NO_UNSUPPORTED_PLATFORM_ERROR
-)
+if(AMNEZIA_NIXOS_BUILD)
+    qt_generate_deploy_script(
+        TARGET ${PROJECT}
+        OUTPUT_SCRIPT QT_DEPLOY_SCRIPT
+        CONTENT "
+qt6_deploy_runtime_dependencies(
+    EXECUTABLE \"$<TARGET_FILE:${PROJECT}>\"
+    GENERATE_QT_CONF
+    EXCLUDE_PLUGINS qgtk3
+    EXCLUDE_PLUGIN_TYPES sqldrivers
+)"
+    )
+else()
+    qt_generate_deploy_app_script(
+        TARGET ${PROJECT}
+        OUTPUT_SCRIPT QT_DEPLOY_SCRIPT
+        NO_UNSUPPORTED_PLATFORM_ERROR
+    )
+endif()
 install(SCRIPT ${QT_DEPLOY_SCRIPT}
     COMPONENT AmneziaVPNCore
 )

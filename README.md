@@ -132,6 +132,16 @@ deploy/build-linux-matrix.sh --targets ubuntu,debian,arch,nix --mode container
 # Build Debian/Ubuntu packages on the current Linux host
 deploy/build-linux-matrix.sh --targets deb --mode host --generators DEB
 
+# Reproducible NixOS build using the pinned flake environment
+git submodule update --init --recursive
+deploy/build-linux-matrix.sh --targets nix --mode auto
+
+# Build Conan dependencies from source when the Amnezia binary remote is unavailable
+deploy/build-linux-matrix.sh --targets nix --mode auto --no-amnezia-remote
+
+# The nix target produces a NixOS-specific archive with /nix/store runtime paths.
+# Use the debian, ubuntu, or arch targets for conventional Linux distributions.
+
 # Build Android APK and AAB
 deploy/build.sh -t android --aab
 

@@ -1,9 +1,11 @@
+#include <algorithm>
 #include <atomic>
 #include <csignal>
 #include <functional>
 #include <memory>
 
 #include <QCoreApplication>
+#include <QBuffer>
 #include <QDateTime>
 #include <QDir>
 #include <QEventLoop>
@@ -56,6 +58,7 @@
 #include "logger.h"
 #include "mozilla/localsocketcontroller.h"
 #include "secureQSettings.h"
+#include "terminal.h"
 #include "version.h"
 #include "vpnConnection.h"
 
@@ -374,6 +377,7 @@ public:
 
     QString dim(const QString &text) const { return wrap(QStringLiteral("2"), text); }
     QString bold(const QString &text) const { return wrap(QStringLiteral("1"), text); }
+    QString inverse(const QString &text) const { return wrap(QStringLiteral("1;7"), text); }
     QString cyan(const QString &text) const { return wrap(QStringLiteral("38;2;128;200;191"), text); }
     QString blue(const QString &text) const { return wrap(QStringLiteral("38;2;149;195;217"), text); }
     QString purple(const QString &text) const { return wrap(QStringLiteral("38;2;109;95;164"), text); }
@@ -401,9 +405,7 @@ class Cli
 {
 public:
     Cli()
-        : out(stdout),
-          err(stderr),
-          settings(ORGANIZATION_NAME, APPLICATION_NAME),
+        : settings(ORGANIZATION_NAME, APPLICATION_NAME),
           serversRepository(&settings),
           appSettingsRepository(&settings),
           serversController(&serversRepository, &appSettingsRepository),
@@ -422,6 +424,12 @@ public:
           newsController(&appSettingsRepository, &serversRepository),
           style(true)
     {
+        if (stdoutDevice.open(stdout, QIODevice::WriteOnly, QFileDevice::DontCloseHandle)) {
+            out.setDevice(&stdoutDevice);
+        }
+        if (stderrDevice.open(stderr, QIODevice::WriteOnly, QFileDevice::DontCloseHandle)) {
+            err.setDevice(&stderrDevice);
+        }
     }
 
     int run(QStringList args)
@@ -439,6 +447,8 @@ public:
     }
 
 private:
+    QFile stdoutDevice;
+    QFile stderrDevice;
     QTextStream out;
     QTextStream err;
 
@@ -461,6 +471,48 @@ private:
     NewsController newsController;
     Style style;
     bool jsonOutput = false;
+
+    enum class TuiView
+    {
+        Overview,
+        Settings,
+        Output
+    };
+
+    enum class TuiSettingKind
+    {
+        Toggle,
+        Text,
+        Choice
+    };
+
+    struct TuiSetting
+    {
+        QString key;
+        QString label;
+        QString value;
+        TuiSettingKind kind = TuiSettingKind::Text;
+        QStringList choices;
+    };
+
+    struct TuiState
+    {
+        TuiView view = TuiView::Overview;
+        int settingIndex = 0;
+        int outputOffset = 0;
+        QString input;
+        int inputCursor = 0;
+        QStringList history;
+        int historyIndex = -1;
+        QString historyDraft;
+        QString lastCommand;
+        QStringList outputLines;
+        QString message;
+        bool messageIsError = false;
+        bool editingSetting = false;
+        QString editingKey;
+        QString editingLabel;
+    };
 
     int dispatch(QStringList args, bool fromShell)
     {
@@ -659,9 +711,11 @@ private:
         out << "  subscription ...               Gateway import/update/account/native config commands" << Qt::endl;
         out << "  catalog                        Fetch Gateway service catalog" << Qt::endl;
         out << "  news                           Fetch Gateway news for installed services" << Qt::endl;
-        out << "  shell                          Open the continuous CLI app" << Qt::endl << Qt::endl;
+        out << "  shell                          Open the dynamic terminal UI" << Qt::endl << Qt::endl;
 
-        out << style.bold(QStringLiteral("Shell shortcuts")) << Qt::endl;
+        out << style.bold(QStringLiteral("Interactive shortcuts")) << Qt::endl;
+        out << "  Tab                            Switch Overview, Settings, and Output views" << Qt::endl;
+        out << "  Arrow keys / Space / Enter     Navigate and edit settings" << Qt::endl;
         out << "  ls                             servers list" << Qt::endl;
         out << "  use <server>                   servers default <server>" << Qt::endl;
         out << "  up [server]                    connect [server]" << Qt::endl;
@@ -1164,6 +1218,29 @@ private:
         return vpnConnection.connectionState() == Vpn::ConnectionState::Error ? 1 : 0;
     }
 
+    int connectTui(const QStringList &args)
+    {
+        const ArgView view(args);
+        const QStringList positional = view.positionals();
+        const QString requested = positional.isEmpty() ? QString() : positional.join(QLatin1Char(' '));
+        const QString serverId = resolveServer(requested, true);
+        if (serverId.isEmpty()) {
+            return fail(QStringLiteral("No server selected. Import a config or pass a server index/id/name."));
+        }
+
+        const ErrorCode supported = connectionController.isConnectionSupported(serverId);
+        if (supported != ErrorCode::NoError) {
+            return fail(cleanError(supported));
+        }
+
+        g_stopRequested = false;
+        const ErrorCode openError = connectionController.openConnection(serverId);
+        if (openError != ErrorCode::NoError) {
+            return fail(cleanError(openError));
+        }
+        return ok(QStringLiteral("Connection started: %1").arg(displayName(serverId)));
+    }
+
     int disconnect()
     {
         bool serviceReached = IpcClient::withInterface(
@@ -1264,6 +1341,7 @@ private:
         object.insert(QStringLiteral("allowedDns"), QJsonArray::fromStringList(appSettingsRepository.getAllowedDnsServers()));
         object.insert(QStringLiteral("logging"), appSettingsRepository.isSaveLogs());
         object.insert(QStringLiteral("autoConnect"), appSettingsRepository.isAutoConnect());
+        object.insert(QStringLiteral("autoStart"), settingsController.isAutoStartEnabled());
         object.insert(QStringLiteral("startMinimized"), appSettingsRepository.isStartMinimized());
         object.insert(QStringLiteral("screenshots"), appSettingsRepository.isScreenshotsEnabled());
         object.insert(QStringLiteral("newsNotifications"), appSettingsRepository.isNewsNotifications());
@@ -1316,6 +1394,9 @@ private:
             settingsController.setPrimaryDns(value);
         } else if (normalized == QLatin1String("secondary-dns")) {
             settingsController.setSecondaryDns(value);
+        } else if (normalized == QLatin1String("allowed-dns")) {
+            const QStringList servers = value.split(QRegularExpression(QStringLiteral("[,;\\s]+")), Qt::SkipEmptyParts);
+            allowedDnsController.addDnsList(servers, true);
         } else if (normalized == QLatin1String("logging")) {
             if (!validBool) return fail(QStringLiteral("Expected boolean value."));
             settingsController.toggleLogging(boolean);
@@ -1341,6 +1422,22 @@ private:
         } else if (normalized == QLatin1String("strict-killswitch") || normalized == QLatin1String("strict-kill-switch")) {
             if (!validBool) return fail(QStringLiteral("Expected boolean value."));
             settingsController.toggleStrictKillSwitch(boolean);
+        } else if (normalized == QLatin1String("site-split") || normalized == QLatin1String("site-split-enabled")) {
+            if (!validBool) return fail(QStringLiteral("Expected boolean value."));
+            ipSplitController.toggleSplitTunneling(boolean);
+        } else if (normalized == QLatin1String("site-split-mode")) {
+            bool validMode = false;
+            const RouteMode mode = parseRouteMode(value, validMode);
+            if (!validMode) return fail(QStringLiteral("Expected one of: all, only, except."));
+            ipSplitController.setRouteMode(mode);
+        } else if (normalized == QLatin1String("app-split") || normalized == QLatin1String("app-split-enabled")) {
+            if (!validBool) return fail(QStringLiteral("Expected boolean value."));
+            appSplitController.toggleSplitTunneling(boolean);
+        } else if (normalized == QLatin1String("app-split-mode")) {
+            bool validMode = false;
+            const AppsRouteMode mode = parseAppsRouteMode(value, validMode);
+            if (!validMode) return fail(QStringLiteral("Expected one of: all, only, except."));
+            appSplitController.setRouteMode(mode);
         } else if (normalized == QLatin1String("language")) {
             settingsController.setAppLanguage(QLocale(value));
         } else if (normalized == QLatin1String("gateway-endpoint")) {
@@ -1876,6 +1973,414 @@ private:
         out << QStringLiteral("\x1b[2J\x1b[H") << Qt::flush;
     }
 
+    QString elideTuiText(QString text, int width) const
+    {
+        text.replace(QLatin1Char('\r'), QLatin1Char(' '));
+        text.replace(QLatin1Char('\n'), QLatin1Char(' '));
+        if (width <= 0) {
+            return {};
+        }
+        if (text.size() <= width) {
+            return text;
+        }
+        if (width <= 3) {
+            return text.left(width);
+        }
+        return text.left(width - 3) + QStringLiteral("...");
+    }
+
+    QString plainTuiText(QString text) const
+    {
+        text.remove(QRegularExpression(QStringLiteral("\x1b\\[[0-9;]*m")));
+        return text.simplified();
+    }
+
+    QVector<TuiSetting> tuiSettings() const
+    {
+        QVector<TuiSetting> result;
+        const auto addToggle = [&](const char *key, const char *label, bool value) {
+            result.append({ QString::fromLatin1(key), QString::fromLatin1(label), boolText(value), TuiSettingKind::Toggle, {} });
+        };
+        const auto addText = [&](const char *key, const char *label, const QString &value) {
+            result.append({ QString::fromLatin1(key), QString::fromLatin1(label), value, TuiSettingKind::Text, {} });
+        };
+        const auto addChoice = [&](const char *key, const char *label, const QString &value) {
+            result.append({ QString::fromLatin1(key), QString::fromLatin1(label), value, TuiSettingKind::Choice,
+                            { QStringLiteral("all"), QStringLiteral("only"), QStringLiteral("except") } });
+        };
+
+        addToggle("amnezia-dns", "Amnezia DNS", appSettingsRepository.useAmneziaDns());
+        addText("primary-dns", "Primary DNS", appSettingsRepository.primaryDns());
+        addText("secondary-dns", "Secondary DNS", appSettingsRepository.secondaryDns());
+        addText("allowed-dns", "Allowed DNS", appSettingsRepository.getAllowedDnsServers().join(QStringLiteral(", ")));
+        addToggle("kill-switch", "Kill switch", appSettingsRepository.isKillSwitchEnabled());
+        addToggle("strict-kill-switch", "Strict kill switch", appSettingsRepository.isStrictKillSwitchEnabled());
+        addToggle("autoconnect", "Auto connect", appSettingsRepository.isAutoConnect());
+        addToggle("autostart", "Auto start", settingsController.isAutoStartEnabled());
+        addToggle("start-minimized", "Start minimized", appSettingsRepository.isStartMinimized());
+        addToggle("logging", "Save logs", appSettingsRepository.isSaveLogs());
+        addToggle("screenshots", "Screenshots", appSettingsRepository.isScreenshotsEnabled());
+        addToggle("news", "News notifications", appSettingsRepository.isNewsNotifications());
+        addToggle("site-split", "Site split tunnel", ipSplitController.isSplitTunnelingEnabled());
+        addChoice("site-split-mode", "Site split mode", routeModeName(ipSplitController.getRouteMode()));
+        addToggle("app-split", "App split tunnel", appSplitController.isSplitTunnelingEnabled());
+        addChoice("app-split-mode", "App split mode", appsRouteModeName(appSplitController.getRouteMode()));
+        addText("language", "Language", appSettingsRepository.getAppLanguage().name());
+        addToggle("dev-gateway", "Development gateway", appSettingsRepository.isDevGatewayEnv());
+        addText("gateway-endpoint", "Gateway endpoint", appSettingsRepository.getGatewayEndpoint());
+        return result;
+    }
+
+    QStringList captureTuiAction(const std::function<int()> &action, int &exitCode)
+    {
+        out.flush();
+        err.flush();
+        QIODevice *savedOut = out.device();
+        QIODevice *savedErr = err.device();
+
+        QByteArray stdoutData;
+        QByteArray stderrData;
+        QBuffer stdoutBuffer(&stdoutData);
+        QBuffer stderrBuffer(&stderrData);
+        stdoutBuffer.open(QIODevice::WriteOnly);
+        stderrBuffer.open(QIODevice::WriteOnly);
+        out.setDevice(&stdoutBuffer);
+        err.setDevice(&stderrBuffer);
+
+        exitCode = action();
+        out.flush();
+        err.flush();
+        out.setDevice(savedOut);
+        err.setDevice(savedErr);
+
+        QString captured = QString::fromUtf8(stdoutData);
+        if (!stderrData.isEmpty()) {
+            if (!captured.isEmpty() && !captured.endsWith(QLatin1Char('\n'))) {
+                captured.append(QLatin1Char('\n'));
+            }
+            captured.append(QString::fromUtf8(stderrData));
+        }
+        captured.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+        captured.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+
+        QStringList lines = captured.split(QLatin1Char('\n'), Qt::KeepEmptyParts);
+        while (!lines.isEmpty() && lines.constLast().isEmpty()) {
+            lines.removeLast();
+        }
+        return lines;
+    }
+
+    QStringList captureTuiCommand(const QStringList &args, int &exitCode)
+    {
+        return captureTuiAction([&]() { return dispatch(args, true); }, exitCode);
+    }
+
+    void setTuiMessage(TuiState &state, const QString &message, bool isError = false)
+    {
+        state.message = message;
+        state.messageIsError = isError;
+    }
+
+    void applyTuiSetting(TuiState &state, const TuiSetting &setting, const QString &value)
+    {
+        int exitCode = 0;
+        state.outputLines = captureTuiCommand(
+                { QStringLiteral("settings"), QStringLiteral("set"), setting.key, value }, exitCode);
+        state.outputOffset = 0;
+        if (exitCode == 0) {
+            setTuiMessage(state, QStringLiteral("%1 updated").arg(setting.label));
+        } else {
+            const QString details = plainTuiText(state.outputLines.join(QLatin1Char(' ')));
+            setTuiMessage(state, details.isEmpty() ? QStringLiteral("Unable to update %1").arg(setting.label) : details, true);
+        }
+    }
+
+    void activateTuiSetting(TuiState &state, int direction = 1)
+    {
+        const QVector<TuiSetting> current = tuiSettings();
+        if (current.isEmpty()) {
+            return;
+        }
+        const int settingCount = static_cast<int>(current.size());
+        state.settingIndex = qBound(0, state.settingIndex, settingCount - 1);
+        const TuiSetting setting = current.at(state.settingIndex);
+        if (setting.kind == TuiSettingKind::Toggle) {
+            bool valid = false;
+            const bool enabled = parseBool(setting.value, valid);
+            const bool next = direction < 0 ? false : direction > 1 ? true : !enabled;
+            applyTuiSetting(state, setting, boolText(next));
+            return;
+        }
+        if (setting.kind == TuiSettingKind::Choice) {
+            int index = setting.choices.indexOf(setting.value);
+            if (index < 0) {
+                index = 0;
+            }
+            const int choiceCount = static_cast<int>(setting.choices.size());
+            index = (index + (direction < 0 ? -1 : 1) + choiceCount) % choiceCount;
+            applyTuiSetting(state, setting, setting.choices.at(index));
+            return;
+        }
+
+        state.editingSetting = true;
+        state.editingKey = setting.key;
+        state.editingLabel = setting.label;
+        state.input = setting.value;
+        state.inputCursor = state.input.size();
+        state.historyIndex = -1;
+        setTuiMessage(state, QStringLiteral("Enter saves, Esc cancels"));
+    }
+
+    QStringList buildTuiFrame(TuiState &state, const amnezia::cli::TerminalSize &size,
+                              int &cursorRow, int &cursorColumn)
+    {
+        const int width = size.columns;
+        const int height = size.rows;
+        cursorRow = -1;
+        cursorColumn = -1;
+
+        if (width < 48 || height < 14) {
+            return {
+                style.bold(elideTuiText(QStringLiteral("AMNEZIA VPN CLI  %1").arg(APP_VERSION), width)),
+                {},
+                style.orange(elideTuiText(QStringLiteral("Terminal too small"), width)),
+                elideTuiText(QStringLiteral("Resize to at least 48 x 14. Ctrl+C exits."), width)
+            };
+        }
+
+        QStringList frame;
+        const bool serviceReady = connectionController.isServiceReady();
+        const QString headerLeft = QStringLiteral(" AMNEZIA VPN CLI  %1").arg(APP_VERSION);
+        const QString headerRight = serviceReady ? QStringLiteral("SERVICE READY ") : QStringLiteral("SERVICE OFFLINE ");
+        if (headerLeft.size() + headerRight.size() <= width) {
+            const QString gap(width - headerLeft.size() - headerRight.size(), QLatin1Char(' '));
+            frame.append(style.bold(headerLeft) + gap
+                         + (serviceReady ? style.green(headerRight) : style.red(headerRight)));
+        } else {
+            frame.append(style.bold(elideTuiText(headerLeft, width)));
+        }
+
+        const auto tab = [&](TuiView view, const char *label) {
+            const QString text = QStringLiteral(" %1 ").arg(QString::fromLatin1(label));
+            return state.view == view ? style.inverse(QStringLiteral("[%1]").arg(text)) : style.dim(text);
+        };
+        frame.append(tab(TuiView::Overview, "OVERVIEW") + QLatin1Char(' ')
+                     + tab(TuiView::Settings, "SETTINGS") + QLatin1Char(' ')
+                     + tab(TuiView::Output, "OUTPUT"));
+
+        const QString separator(width, QChar(0x2500));
+        frame.append(style.gray(separator));
+        const int mainRows = height - 6;
+        QStringList main;
+
+        if (state.view == TuiView::Overview) {
+            const auto row = [&](const QString &label, const QString &value) {
+                return QStringLiteral("  %1%2").arg(label.leftJustified(22), value);
+            };
+            main.append(style.bold(QStringLiteral("Overview")));
+            main.append(QString());
+            main.append(row(QStringLiteral("Service"), serviceReady ? style.green(QStringLiteral("ready"))
+                                                                    : style.red(QStringLiteral("not running"))));
+            main.append(row(QStringLiteral("VPN state"), stateName(vpnConnection.connectionState())));
+            main.append(row(QStringLiteral("Servers"), QString::number(serversController.getServersCount())));
+            main.append(row(QStringLiteral("Default server"), promptServerName()));
+            main.append(row(QStringLiteral("Amnezia DNS"), boolText(appSettingsRepository.useAmneziaDns())));
+            main.append(row(QStringLiteral("Kill switch"), boolText(appSettingsRepository.isKillSwitchEnabled())));
+            main.append(QString());
+            main.append(style.bold(QStringLiteral("Commands")));
+            main.append(style.dim(QStringLiteral("  connect [server]     disconnect     servers list")));
+            main.append(style.dim(QStringLiteral("  settings             status         help")));
+            if (!state.lastCommand.isEmpty()) {
+                main.append(QString());
+                main.append(QStringLiteral("  Last: %1").arg(elideTuiText(state.lastCommand, width - 8)));
+            }
+        } else if (state.view == TuiView::Settings) {
+            const QVector<TuiSetting> current = tuiSettings();
+            const int settingCount = static_cast<int>(current.size());
+            if (!current.isEmpty()) {
+                state.settingIndex = qBound(0, state.settingIndex, settingCount - 1);
+            }
+            main.append(style.bold(QStringLiteral("Settings  %1/%2")
+                                           .arg(current.isEmpty() ? 0 : state.settingIndex + 1)
+                                           .arg(settingCount)));
+            const int visibleRows = qMax(1, mainRows - 1);
+            const int maxStart = qMax(0, settingCount - visibleRows);
+            const int start = qBound(0, state.settingIndex - visibleRows / 2, maxStart);
+            const int labelWidth = qMin(28, qMax(12, width / 2));
+            for (int i = start; i < current.size() && main.size() < mainRows; ++i) {
+                const TuiSetting &setting = current.at(i);
+                const bool selected = i == state.settingIndex;
+                QString control = QStringLiteral("    ");
+                if (setting.kind == TuiSettingKind::Toggle) {
+                    control = setting.value == QLatin1String("on") ? QStringLiteral("[x] ") : QStringLiteral("[ ] ");
+                } else if (setting.kind == TuiSettingKind::Choice) {
+                    control = QStringLiteral("<>  ");
+                }
+                const QString prefix = QStringLiteral("%1 %2%3")
+                                               .arg(selected ? QLatin1Char('>') : QLatin1Char(' '))
+                                               .arg(control, setting.label.leftJustified(labelWidth));
+                const QString value = elideTuiText(setting.value, qMax(1, width - static_cast<int>(prefix.size())));
+                const QString line = elideTuiText(prefix + value, width);
+                main.append(selected ? style.inverse(line) : line);
+            }
+        } else {
+            main.append(style.bold(QStringLiteral("Latest command")));
+            main.append(state.lastCommand.isEmpty()
+                                ? style.dim(QStringLiteral("  No command has run yet"))
+                                : style.cyan(QStringLiteral("  $ %1").arg(elideTuiText(state.lastCommand, width - 4))));
+            main.append(QString());
+            const int outputRows = qMax(1, mainRows - static_cast<int>(main.size()));
+            const int maxOffset = qMax(0, static_cast<int>(state.outputLines.size()) - outputRows);
+            state.outputOffset = qBound(0, state.outputOffset, maxOffset);
+            if (state.outputLines.isEmpty()) {
+                main.append(style.dim(QStringLiteral("  Command output replaces this panel.")));
+            } else {
+                for (int i = state.outputOffset;
+                     i < state.outputLines.size() && main.size() < mainRows; ++i) {
+                    main.append(state.outputLines.at(i));
+                }
+            }
+        }
+
+        while (main.size() < mainRows) {
+            main.append(QString());
+        }
+        while (main.size() > mainRows) {
+            main.removeLast();
+        }
+        frame.append(main);
+        frame.append(style.gray(separator));
+
+        QString footer = state.message;
+        if (footer.isEmpty()) {
+            if (state.view == TuiView::Settings && state.input.isEmpty()) {
+                footer = QStringLiteral("Up/Down select   Space toggle   Left/Right change   Enter edit   Tab view");
+            } else if (state.view == TuiView::Output && state.input.isEmpty()) {
+                footer = QStringLiteral("Up/Down scroll   PageUp/PageDown page   Tab view   Ctrl+C exit");
+            } else {
+                footer = QStringLiteral("Tab changes view   Up/Down history   Ctrl+L redraw   Ctrl+C exit");
+            }
+        }
+        footer = elideTuiText(footer, width);
+        frame.append(!state.message.isEmpty() && state.messageIsError ? style.red(footer) : style.dim(footer));
+
+        QString prompt = state.editingSetting
+                ? QStringLiteral("%1 = ").arg(state.editingLabel)
+                : QStringLiteral("%1 [%2]> ").arg(cliCommandName(), promptServerName());
+        prompt = elideTuiText(prompt, qMax(10, width / 2));
+        const int inputWidth = qMax(1, width - static_cast<int>(prompt.size()));
+        int inputStart = 0;
+        if (state.inputCursor >= inputWidth) {
+            inputStart = state.inputCursor - inputWidth + 1;
+        }
+        const QString input = state.input.mid(inputStart, inputWidth);
+        frame.append(style.cyan(prompt) + input);
+        cursorRow = height;
+        cursorColumn = qBound(1, static_cast<int>(prompt.size()) + state.inputCursor - inputStart + 1, width);
+        return frame;
+    }
+
+    bool executeTuiCommand(TuiState &state, const QString &line)
+    {
+        const QString trimmed = line.trimmed();
+        if (trimmed.isEmpty()) {
+            return true;
+        }
+
+        if (state.history.isEmpty() || state.history.constLast() != trimmed) {
+            state.history.append(trimmed);
+        }
+        state.historyIndex = -1;
+        state.historyDraft.clear();
+        state.lastCommand = trimmed;
+
+        const QString lower = trimmed.toLower();
+        if (lower == QLatin1String("exit") || lower == QLatin1String("quit") || lower == QLatin1String("q")) {
+            return false;
+        }
+        if (lower == QLatin1String("clear") || lower == QLatin1String("cls")) {
+            state.outputLines.clear();
+            state.lastCommand.clear();
+            setTuiMessage(state, QStringLiteral("Output cleared"));
+            return true;
+        }
+        if (lower == QLatin1String("home") || lower == QLatin1String("dashboard") || lower == QLatin1String("overview")) {
+            state.view = TuiView::Overview;
+            state.message.clear();
+            return true;
+        }
+        if (lower == QLatin1String("settings") || lower == QLatin1String("setting")
+            || lower == QLatin1String("config") || lower == QLatin1String("cfg")) {
+            state.view = TuiView::Settings;
+            state.message.clear();
+            return true;
+        }
+        if (lower == QLatin1String("output")) {
+            state.view = TuiView::Output;
+            state.message.clear();
+            return true;
+        }
+        if (lower == QLatin1String("interactive") || lower == QLatin1String("menu")
+            || lower == QLatin1String("shell") || lower == QLatin1String("app")) {
+            setTuiMessage(state, QStringLiteral("Already in interactive mode"));
+            return true;
+        }
+
+        const QStringList args = QProcess::splitCommand(trimmed);
+        if (args.isEmpty()) {
+            return true;
+        }
+        int exitCode = 0;
+        const QString command = args.constFirst().toLower();
+        if (command == QLatin1String("connect") || command == QLatin1String("up")) {
+            QStringList connectArgs = args;
+            connectArgs.removeFirst();
+            state.outputLines = captureTuiAction([&]() { return connectTui(connectArgs); }, exitCode);
+        } else if (command == QLatin1String("disconnect") || command == QLatin1String("down")) {
+            state.outputLines = captureTuiAction([&]() {
+                connectionController.closeConnection();
+                return disconnect();
+            }, exitCode);
+        } else {
+            state.outputLines = captureTuiCommand(args, exitCode);
+        }
+        state.outputOffset = 0;
+        state.view = TuiView::Output;
+        setTuiMessage(state, exitCode == 0 ? QStringLiteral("Command finished")
+                                           : QStringLiteral("Command failed"), exitCode != 0);
+        return true;
+    }
+
+    void tuiHistoryUp(TuiState &state)
+    {
+        if (state.history.isEmpty()) {
+            return;
+        }
+        if (state.historyIndex < 0) {
+            state.historyDraft = state.input;
+            state.historyIndex = state.history.size() - 1;
+        } else if (state.historyIndex > 0) {
+            --state.historyIndex;
+        }
+        state.input = state.history.at(state.historyIndex);
+        state.inputCursor = state.input.size();
+    }
+
+    void tuiHistoryDown(TuiState &state)
+    {
+        if (state.historyIndex < 0) {
+            return;
+        }
+        if (state.historyIndex + 1 < state.history.size()) {
+            ++state.historyIndex;
+            state.input = state.history.at(state.historyIndex);
+        } else {
+            state.historyIndex = -1;
+            state.input = state.historyDraft;
+        }
+        state.inputCursor = state.input.size();
+    }
+
     QString promptServerName() const
     {
         const QString id = serversController.getDefaultServerId();
@@ -1889,7 +2394,7 @@ private:
         return name;
     }
 
-    int shell()
+    int lineShell()
     {
         const bool previousJsonOutput = jsonOutput;
         jsonOutput = false;
@@ -1931,6 +2436,203 @@ private:
             }
             dispatch(args, true);
         }
+    }
+
+    int shell()
+    {
+        if (!amnezia::cli::TerminalSession::isInteractive()) {
+            return lineShell();
+        }
+
+        out.flush();
+        err.flush();
+        amnezia::cli::TerminalSession terminal;
+        if (!terminal.open()) {
+            return lineShell();
+        }
+
+        const bool previousJsonOutput = jsonOutput;
+        jsonOutput = false;
+        g_stopRequested = false;
+        TuiState state;
+        amnezia::cli::TerminalRenderer renderer(terminal);
+
+        const auto render = [&]() {
+            int cursorRow = -1;
+            int cursorColumn = -1;
+            renderer.render(buildTuiFrame(state, terminal.size(), cursorRow, cursorColumn),
+                            cursorRow, cursorColumn);
+        };
+
+        bool running = true;
+        while (running && !g_stopRequested) {
+            render();
+            const amnezia::cli::TerminalKey key = terminal.readKey(250);
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (key.type == amnezia::cli::TerminalKeyType::Timeout) {
+                continue;
+            }
+
+            const bool settingsNavigation = state.view == TuiView::Settings
+                    && state.input.isEmpty() && !state.editingSetting;
+            const bool outputNavigation = state.view == TuiView::Output
+                    && state.input.isEmpty() && !state.editingSetting;
+
+            switch (key.type) {
+            case amnezia::cli::TerminalKeyType::CtrlC:
+                if (!state.input.isEmpty() || state.editingSetting) {
+                    state.input.clear();
+                    state.inputCursor = 0;
+                    state.editingSetting = false;
+                    state.editingKey.clear();
+                    state.editingLabel.clear();
+                    setTuiMessage(state, QStringLiteral("Input cleared"));
+                } else {
+                    running = false;
+                }
+                break;
+            case amnezia::cli::TerminalKeyType::CtrlD:
+                if (state.input.isEmpty()) {
+                    running = false;
+                } else if (state.inputCursor < state.input.size()) {
+                    state.input.remove(state.inputCursor, 1);
+                }
+                break;
+            case amnezia::cli::TerminalKeyType::CtrlL:
+                renderer.invalidate();
+                break;
+            case amnezia::cli::TerminalKeyType::Escape:
+                state.input.clear();
+                state.inputCursor = 0;
+                state.editingSetting = false;
+                state.editingKey.clear();
+                state.editingLabel.clear();
+                state.message.clear();
+                break;
+            case amnezia::cli::TerminalKeyType::Tab:
+                if (!state.editingSetting) {
+                    state.view = static_cast<TuiView>((static_cast<int>(state.view) + 1) % 3);
+                    state.message.clear();
+                }
+                break;
+            case amnezia::cli::TerminalKeyType::Enter:
+                if (state.editingSetting) {
+                    const QVector<TuiSetting> current = tuiSettings();
+                    auto it = std::find_if(current.constBegin(), current.constEnd(), [&](const TuiSetting &setting) {
+                        return setting.key == state.editingKey;
+                    });
+                    if (it != current.constEnd()) {
+                        setTuiMessage(state, QStringLiteral("Updating %1...").arg(it->label));
+                        render();
+                        applyTuiSetting(state, *it, state.input);
+                    }
+                    state.input.clear();
+                    state.inputCursor = 0;
+                    state.editingSetting = false;
+                    state.editingKey.clear();
+                    state.editingLabel.clear();
+                } else if (!state.input.trimmed().isEmpty()) {
+                    const QString command = state.input;
+                    state.input.clear();
+                    state.inputCursor = 0;
+                    setTuiMessage(state, QStringLiteral("Running %1...").arg(command));
+                    render();
+                    running = executeTuiCommand(state, command);
+                } else if (settingsNavigation) {
+                    activateTuiSetting(state);
+                }
+                break;
+            case amnezia::cli::TerminalKeyType::Backspace:
+                if (state.inputCursor > 0) {
+                    state.input.remove(state.inputCursor - 1, 1);
+                    --state.inputCursor;
+                    state.historyIndex = -1;
+                }
+                break;
+            case amnezia::cli::TerminalKeyType::Delete:
+                if (state.inputCursor < state.input.size()) {
+                    state.input.remove(state.inputCursor, 1);
+                    state.historyIndex = -1;
+                }
+                break;
+            case amnezia::cli::TerminalKeyType::Left:
+                if (settingsNavigation) {
+                    setTuiMessage(state, QStringLiteral("Updating setting..."));
+                    render();
+                    activateTuiSetting(state, -1);
+                } else if (state.inputCursor > 0) {
+                    --state.inputCursor;
+                }
+                break;
+            case amnezia::cli::TerminalKeyType::Right:
+                if (settingsNavigation) {
+                    setTuiMessage(state, QStringLiteral("Updating setting..."));
+                    render();
+                    activateTuiSetting(state, 2);
+                } else if (state.inputCursor < state.input.size()) {
+                    ++state.inputCursor;
+                }
+                break;
+            case amnezia::cli::TerminalKeyType::Home:
+                state.inputCursor = 0;
+                break;
+            case amnezia::cli::TerminalKeyType::End:
+                state.inputCursor = state.input.size();
+                break;
+            case amnezia::cli::TerminalKeyType::Up:
+                if (settingsNavigation) {
+                    state.settingIndex = qMax(0, state.settingIndex - 1);
+                    state.message.clear();
+                } else if (outputNavigation) {
+                    state.outputOffset = qMax(0, state.outputOffset - 1);
+                    state.message.clear();
+                } else if (!state.editingSetting) {
+                    tuiHistoryUp(state);
+                }
+                break;
+            case amnezia::cli::TerminalKeyType::Down:
+                if (settingsNavigation) {
+                    state.settingIndex = qMin(static_cast<int>(tuiSettings().size()) - 1, state.settingIndex + 1);
+                    state.message.clear();
+                } else if (outputNavigation) {
+                    ++state.outputOffset;
+                    state.message.clear();
+                } else if (!state.editingSetting) {
+                    tuiHistoryDown(state);
+                }
+                break;
+            case amnezia::cli::TerminalKeyType::PageUp:
+                if (outputNavigation) {
+                    state.outputOffset = qMax(0, state.outputOffset - qMax(1, terminal.size().rows / 2));
+                    state.message.clear();
+                }
+                break;
+            case amnezia::cli::TerminalKeyType::PageDown:
+                if (outputNavigation) {
+                    state.outputOffset += qMax(1, terminal.size().rows / 2);
+                    state.message.clear();
+                }
+                break;
+            case amnezia::cli::TerminalKeyType::Text:
+                if (settingsNavigation && key.text == QLatin1String(" ")) {
+                    setTuiMessage(state, QStringLiteral("Updating setting..."));
+                    render();
+                    activateTuiSetting(state);
+                } else {
+                    state.input.insert(state.inputCursor, key.text);
+                    state.inputCursor += key.text.size();
+                    state.historyIndex = -1;
+                    state.message.clear();
+                }
+                break;
+            case amnezia::cli::TerminalKeyType::Timeout:
+            case amnezia::cli::TerminalKeyType::Unknown:
+                break;
+            }
+        }
+
+        jsonOutput = previousJsonOutput;
+        return 0;
     }
 };
 } // namespace

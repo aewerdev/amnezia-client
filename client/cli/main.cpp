@@ -576,35 +576,35 @@ private:
 
     void printLogo()
     {
-        out << QStringLiteral("              ") << style.blue(QStringLiteral("⢸⡄")) << Qt::endl;
-        out << QStringLiteral("              ") << style.blue(QStringLiteral("⣸⣷⡀")) << Qt::endl;
-        out << QStringLiteral("          ") << style.cyan(QStringLiteral("⣀⣠⣤"))
-            << style.blue(QStringLiteral("⣿⣿⣿⣿⣿")) << style.pink(QStringLiteral("⣶⣤⡀")) << Qt::endl;
-        out << QStringLiteral("        ") << style.cyan(QStringLiteral("⣀⣼⣿⣿"))
-            << style.blue(QStringLiteral("⢿⣿⡿⣿⣿")) << style.pink(QStringLiteral("⠻⠿⣿⣿⣦⡄")) << Qt::endl;
-        out << QStringLiteral("       ") << style.cyan(QStringLiteral("⣰⣿⡿⠋")) << QStringLiteral(" ")
-            << style.blue(QStringLiteral("⣼⣿⠁⠘⣿⣇")) << QStringLiteral(" ") << style.cream(QStringLiteral("⠈⠙"))
-            << style.peach(QStringLiteral("⣿⣿")) << style.orange(QStringLiteral("⣦⣤⡤⠖⠂")) << Qt::endl;
-        out << QStringLiteral("      ") << style.cyan(QStringLiteral("⣰⣿⠏")) << QStringLiteral("  ")
-            << style.blue(QStringLiteral("⢠⣿⠇")) << QStringLiteral("  ") << style.gray(QStringLiteral("⢸⣿⣦⣤⣶"))
-            << style.cream(QStringLiteral("⣿⢿")) << style.peach(QStringLiteral("⣿⠏")) << Qt::endl;
-        out << QStringLiteral("     ") << style.cyan(QStringLiteral("⢀⣿⡟")) << QStringLiteral("  ")
-            << style.blue(QStringLiteral("⢀⣾⣿⣶")) << style.gray(QStringLiteral("⣶⠾⠿⠿⣿⡏"))
-            << QStringLiteral("  ") << style.orange(QStringLiteral("⢸⣿⡿⠁")) << Qt::endl;
-        out << QStringLiteral("     ") << style.purple(QStringLiteral("⢸⣿⣧⣶"))
-            << style.gray(QStringLiteral("⣾⣿⣿⠟⠉")) << QStringLiteral("    ")
-            << style.gray(QStringLiteral("⢹⣷")) << QStringLiteral("  ") << style.orange(QStringLiteral("⣸⣿⠃")) << Qt::endl;
-        out << QStringLiteral("   ") << style.purple(QStringLiteral("⢀⣠⣾⣿⣿"))
-            << style.gray(QStringLiteral("⠉⢸⣿⠃")) << QStringLiteral("      ")
-            << style.peach(QStringLiteral("⠈⢿⣧")) << style.orange(QStringLiteral("⢠⣿⡿⠁")) << Qt::endl;
-        out << QStringLiteral("   ") << style.purple(QStringLiteral("⠁")) << QStringLiteral("  ")
-            << style.gray(QStringLiteral("⠘⢿⣷")) << style.peach(QStringLiteral("⣿⣿")) << QStringLiteral("        ")
-            << style.orange(QStringLiteral("⢘⣿⣿⡟")) << Qt::endl;
-        out << QStringLiteral("        ") << style.gray(QStringLiteral("⢹⡿⠿⣷⣶"))
-            << style.peach(QStringLiteral("⣦⣤⣤⣤")) << style.orange(QStringLiteral("⣴⣾⡿⠿⣿⡇")) << Qt::endl;
-        out << QStringLiteral("        ") << style.gray(QStringLiteral("⡼⠁")) << QStringLiteral("   ")
-            << style.peach(QStringLiteral("⠉⠉")) << style.orange(QStringLiteral("⠉⠉⠉")) << QStringLiteral("   ")
-            << style.orange(QStringLiteral("⠈⠷")) << Qt::endl;
+        out << QStringLiteral("              ") << style.blue(QStringLiteral("▐▖")) << Qt::endl;
+        out << QStringLiteral("              ") << style.blue(QStringLiteral("▟█▖")) << Qt::endl;
+        out << QStringLiteral("          ") << style.cyan(QStringLiteral("▄▄▄"))
+            << style.blue(QStringLiteral("█████")) << style.pink(QStringLiteral("█▄▖")) << Qt::endl;
+        out << QStringLiteral("        ") << style.cyan(QStringLiteral("▄▟██"))
+            << style.blue(QStringLiteral("█████")) << style.pink(QStringLiteral("▜███▙▖")) << Qt::endl;
+        out << QStringLiteral("       ") << style.cyan(QStringLiteral("▟██▀")) << QStringLiteral(" ")
+            << style.blue(QStringLiteral("▟█▘▝█▙")) << QStringLiteral(" ") << style.cream(QStringLiteral("▝▀"))
+            << style.peach(QStringLiteral("██")) << style.orange(QStringLiteral("▙▄▄▛▘")) << Qt::endl;
+        out << QStringLiteral("      ") << style.cyan(QStringLiteral("▟█▛")) << QStringLiteral("  ")
+            << style.blue(QStringLiteral("▗█▌")) << QStringLiteral("  ") << style.gray(QStringLiteral("▐█▙▄█"))
+            << style.cream(QStringLiteral("██")) << style.peach(QStringLiteral("█▛")) << Qt::endl;
+        out << QStringLiteral("     ") << style.cyan(QStringLiteral("▗█▛")) << QStringLiteral("  ")
+            << style.blue(QStringLiteral("▗███")) << style.gray(QStringLiteral("█████▛"))
+            << QStringLiteral("  ") << style.orange(QStringLiteral("▐██▘")) << Qt::endl;
+        out << QStringLiteral("     ") << style.purple(QStringLiteral("▐█▙█"))
+            << style.gray(QStringLiteral("███▛▀")) << QStringLiteral("    ")
+            << style.gray(QStringLiteral("▜█")) << QStringLiteral("  ") << style.orange(QStringLiteral("▟█▘")) << Qt::endl;
+        out << QStringLiteral("   ") << style.purple(QStringLiteral("▗▄███"))
+            << style.gray(QStringLiteral("▀▐█▘")) << QStringLiteral("      ")
+            << style.peach(QStringLiteral("▝█▙")) << style.orange(QStringLiteral("▗██▘")) << Qt::endl;
+        out << QStringLiteral("   ") << style.purple(QStringLiteral("▘")) << QStringLiteral("  ")
+            << style.gray(QStringLiteral("▝██")) << style.peach(QStringLiteral("██")) << QStringLiteral("        ")
+            << style.orange(QStringLiteral("▐██▛")) << Qt::endl;
+        out << QStringLiteral("        ") << style.gray(QStringLiteral("▜████"))
+            << style.peach(QStringLiteral("▙▄▄▄")) << style.orange(QStringLiteral("▟████▌")) << Qt::endl;
+        out << QStringLiteral("        ") << style.gray(QStringLiteral("▟▘")) << QStringLiteral("   ")
+            << style.peach(QStringLiteral("▀▀")) << style.orange(QStringLiteral("▀▀▀")) << QStringLiteral("   ")
+            << style.orange(QStringLiteral("▝█")) << Qt::endl;
         out << style.bold(QStringLiteral("   AMNEZIA VPN CLI")) << style.dim(QStringLiteral("  %1").arg(APP_VERSION)) << Qt::endl;
         out << Qt::endl;
     }

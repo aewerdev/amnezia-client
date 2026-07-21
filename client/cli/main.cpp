@@ -389,6 +389,25 @@ public:
     QString green(const QString &text) const { return wrap(QStringLiteral("38;2;80;200;120"), text); }
     QString red(const QString &text) const { return wrap(QStringLiteral("38;2;240;90;90"), text); }
 
+    QString logo(QChar key, const QString &text) const
+    {
+        QString rgb;
+        switch (key.toLatin1()) {
+        case 'T': rgb = QStringLiteral("127;201;192"); break;
+        case 'B': rgb = QStringLiteral("150;199;219"); break;
+        case 'D': rgb = QStringLiteral("136;173;213"); break;
+        case 'V': rgb = QStringLiteral("121;122;169"); break;
+        case 'P': rgb = QStringLiteral("110;94;166"); break;
+        case 'G': rgb = QStringLiteral("163;157;162"); break;
+        case 'R': rgb = QStringLiteral("253;232;237"); break;
+        case 'C': rgb = QStringLiteral("255;242;208"); break;
+        case 'Y': rgb = QStringLiteral("248;182;111"); break;
+        case 'O': rgb = QStringLiteral("240;138;40"); break;
+        default: return text;
+        }
+        return wrap(QStringLiteral("38;2;%1").arg(rgb), text);
+    }
+
 private:
     QString wrap(const QString &code, const QString &text) const
     {
@@ -626,38 +645,104 @@ private:
 #endif
     }
 
+    QString paintLogoLine(const QString &line, const QString &mask) const
+    {
+        const auto colorAt = [&](int index) -> QChar {
+            if (line.at(index) == QLatin1Char(' ') || index >= mask.size()) {
+                return QChar(QLatin1Char(' '));
+            }
+            return mask.at(index);
+        };
+
+        QString painted;
+        for (int start = 0; start < line.size();) {
+            const QChar key = colorAt(start);
+            int end = start + 1;
+            while (end < line.size() && colorAt(end) == key) {
+                ++end;
+            }
+            const QString run = line.mid(start, end - start);
+            painted.append(key == QLatin1Char(' ') ? run : style.logo(key, run));
+            start = end;
+        }
+        return painted;
+    }
+
+    QStringList logoLines() const
+    {
+        static const QStringList art {
+            QStringLiteral("              ▐▖"),
+            QStringLiteral("              ▟█▖"),
+            QStringLiteral("          ▄▄▄██████▄▖"),
+            QStringLiteral("        ▄▟███████▜███▙▖"),
+            QStringLiteral("       ▟██▀ ▟█▘▝█▙ ▝▀██▙▄▄▛▘"),
+            QStringLiteral("      ▟█▛  ▗█▌  ▐█▙▄████▛"),
+            QStringLiteral("     ▗█▛  ▗████████▛  ▐██▘"),
+            QStringLiteral("     ▐█▙████▛▀    ▜█  ▟█▘"),
+            QStringLiteral("   ▗▄███▀▐█▘      ▝█▙▗██▘"),
+            QStringLiteral("   ▘  ▝████        ▐██▛"),
+            QStringLiteral("        ▜████▙▄▄▄▟████▌"),
+            QStringLiteral("        ▟▘   ▀▀▀▀▀   ▝█")
+        };
+        static const QStringList masks {
+            QStringLiteral("              BB"),
+            QStringLiteral("              BBB"),
+            QStringLiteral("          TTTBBBBDRRR"),
+            QStringLiteral("        TTTTBBBBDDRRRRO"),
+            QStringLiteral("       TTTT BBBDDD RRRRCCYOO"),
+            QStringLiteral("      TTT  DDV  VGGCCYOOO"),
+            QStringLiteral("     PPP  VVVGGGGCCY  YOOO"),
+            QStringLiteral("     PPPPPVVGG    YO  OOO"),
+            QStringLiteral("   PPPPVVVGG      GCYOOOO"),
+            QStringLiteral("   P  VVGGG        YOOO"),
+            QStringLiteral("        GGGCCYYOOOOOOOO"),
+            QStringLiteral("        GG   CYOOO   OO")
+        };
+
+        QStringList result;
+        result.reserve(art.size());
+        for (int i = 0; i < art.size(); ++i) {
+            result.append(paintLogoLine(art.at(i), masks.at(i)));
+        }
+        return result;
+    }
+
+    QString logoWordmark(bool includeColorLabel, int leadingSpaces = 3) const
+    {
+        QString result(leadingSpaces, QLatin1Char(' '));
+        result += style.logo(QLatin1Char('T'), QStringLiteral("A"));
+        result += style.logo(QLatin1Char('D'), QStringLiteral("MN"));
+        result += style.logo(QLatin1Char('G'), QStringLiteral("E"));
+        result += style.logo(QLatin1Char('C'), QStringLiteral("Z"));
+        result += style.logo(QLatin1Char('Y'), QStringLiteral("I"));
+        result += style.logo(QLatin1Char('O'), QStringLiteral("A"));
+        result += QLatin1Char(' ');
+        result += style.logo(QLatin1Char('P'), QStringLiteral("V"));
+        result += style.logo(QLatin1Char('G'), QStringLiteral("P"));
+        result += style.logo(QLatin1Char('O'), QStringLiteral("N"));
+        result += QLatin1Char(' ');
+        result += style.logo(QLatin1Char('B'), QStringLiteral("C"));
+        result += style.logo(QLatin1Char('D'), QStringLiteral("L"));
+        result += style.logo(QLatin1Char('T'), QStringLiteral("I"));
+        result += QStringLiteral("  ");
+        result += style.logo(QLatin1Char('P'), QStringLiteral(APP_VERSION));
+        if (includeColorLabel) {
+            result += QStringLiteral("   ");
+            result += style.logo(QLatin1Char('R'), QStringLiteral("ANSI"));
+            result += QLatin1Char(' ');
+            result += style.logo(QLatin1Char('C'), QStringLiteral("True"));
+            result += style.logo(QLatin1Char('O'), QStringLiteral("Color"));
+        }
+        return result;
+    }
+
     void printLogo()
     {
-        out << QStringLiteral("              ") << style.blue(QStringLiteral("▐▖")) << Qt::endl;
-        out << QStringLiteral("              ") << style.blue(QStringLiteral("▟█▖")) << Qt::endl;
-        out << QStringLiteral("          ") << style.cyan(QStringLiteral("▄▄▄"))
-            << style.blue(QStringLiteral("█████")) << style.pink(QStringLiteral("█▄▖")) << Qt::endl;
-        out << QStringLiteral("        ") << style.cyan(QStringLiteral("▄▟██"))
-            << style.blue(QStringLiteral("█████")) << style.pink(QStringLiteral("▜███▙▖")) << Qt::endl;
-        out << QStringLiteral("       ") << style.cyan(QStringLiteral("▟██▀")) << QStringLiteral(" ")
-            << style.blue(QStringLiteral("▟█▘▝█▙")) << QStringLiteral(" ") << style.cream(QStringLiteral("▝▀"))
-            << style.peach(QStringLiteral("██")) << style.orange(QStringLiteral("▙▄▄▛▘")) << Qt::endl;
-        out << QStringLiteral("      ") << style.cyan(QStringLiteral("▟█▛")) << QStringLiteral("  ")
-            << style.blue(QStringLiteral("▗█▌")) << QStringLiteral("  ") << style.gray(QStringLiteral("▐█▙▄█"))
-            << style.cream(QStringLiteral("██")) << style.peach(QStringLiteral("█▛")) << Qt::endl;
-        out << QStringLiteral("     ") << style.cyan(QStringLiteral("▗█▛")) << QStringLiteral("  ")
-            << style.blue(QStringLiteral("▗███")) << style.gray(QStringLiteral("█████▛"))
-            << QStringLiteral("  ") << style.orange(QStringLiteral("▐██▘")) << Qt::endl;
-        out << QStringLiteral("     ") << style.purple(QStringLiteral("▐█▙█"))
-            << style.gray(QStringLiteral("███▛▀")) << QStringLiteral("    ")
-            << style.gray(QStringLiteral("▜█")) << QStringLiteral("  ") << style.orange(QStringLiteral("▟█▘")) << Qt::endl;
-        out << QStringLiteral("   ") << style.purple(QStringLiteral("▗▄███"))
-            << style.gray(QStringLiteral("▀▐█▘")) << QStringLiteral("      ")
-            << style.peach(QStringLiteral("▝█▙")) << style.orange(QStringLiteral("▗██▘")) << Qt::endl;
-        out << QStringLiteral("   ") << style.purple(QStringLiteral("▘")) << QStringLiteral("  ")
-            << style.gray(QStringLiteral("▝██")) << style.peach(QStringLiteral("██")) << QStringLiteral("        ")
-            << style.orange(QStringLiteral("▐██▛")) << Qt::endl;
-        out << QStringLiteral("        ") << style.gray(QStringLiteral("▜████"))
-            << style.peach(QStringLiteral("▙▄▄▄")) << style.orange(QStringLiteral("▟████▌")) << Qt::endl;
-        out << QStringLiteral("        ") << style.gray(QStringLiteral("▟▘")) << QStringLiteral("   ")
-            << style.peach(QStringLiteral("▀▀")) << style.orange(QStringLiteral("▀▀▀")) << QStringLiteral("   ")
-            << style.orange(QStringLiteral("▝█")) << Qt::endl;
-        out << style.bold(QStringLiteral("   AMNEZIA VPN CLI")) << style.dim(QStringLiteral("  %1").arg(APP_VERSION)) << Qt::endl;
+        const QStringList lines = logoLines();
+        for (const QString &line : lines) {
+            out << line << Qt::endl;
+        }
+        out << logoWordmark(true) << Qt::endl;
         out << Qt::endl;
     }
 
@@ -1995,6 +2080,12 @@ private:
         return text.simplified();
     }
 
+    int tuiTextWidth(QString text) const
+    {
+        text.remove(QRegularExpression(QStringLiteral("\x1b\\[[0-9;]*m")));
+        return text.size();
+    }
+
     QVector<TuiSetting> tuiSettings() const
     {
         QVector<TuiSetting> result;
@@ -2150,14 +2241,15 @@ private:
 
         QStringList frame;
         const bool serviceReady = connectionController.isServiceReady();
-        const QString headerLeft = QStringLiteral(" AMNEZIA VPN CLI  %1").arg(APP_VERSION);
+        const QString headerLeftPlain = QStringLiteral(" AMNEZIA VPN CLI  %1").arg(APP_VERSION);
+        const QString headerLeft = logoWordmark(false, 1);
         const QString headerRight = serviceReady ? QStringLiteral("SERVICE READY ") : QStringLiteral("SERVICE OFFLINE ");
-        if (headerLeft.size() + headerRight.size() <= width) {
-            const QString gap(width - headerLeft.size() - headerRight.size(), QLatin1Char(' '));
-            frame.append(style.bold(headerLeft) + gap
+        if (headerLeftPlain.size() + headerRight.size() <= width) {
+            const QString gap(width - headerLeftPlain.size() - headerRight.size(), QLatin1Char(' '));
+            frame.append(headerLeft + gap
                          + (serviceReady ? style.green(headerRight) : style.red(headerRight)));
         } else {
-            frame.append(style.bold(elideTuiText(headerLeft, width)));
+            frame.append(style.bold(elideTuiText(headerLeftPlain, width)));
         }
 
         const auto tab = [&](TuiView view, const char *label) {
@@ -2177,22 +2269,45 @@ private:
             const auto row = [&](const QString &label, const QString &value) {
                 return QStringLiteral("  %1%2").arg(label.leftJustified(22), value);
             };
-            main.append(style.bold(QStringLiteral("Overview")));
-            main.append(QString());
-            main.append(row(QStringLiteral("Service"), serviceReady ? style.green(QStringLiteral("ready"))
-                                                                    : style.red(QStringLiteral("not running"))));
-            main.append(row(QStringLiteral("VPN state"), stateName(vpnConnection.connectionState())));
-            main.append(row(QStringLiteral("Servers"), QString::number(serversController.getServersCount())));
-            main.append(row(QStringLiteral("Default server"), promptServerName()));
-            main.append(row(QStringLiteral("Amnezia DNS"), boolText(appSettingsRepository.useAmneziaDns())));
-            main.append(row(QStringLiteral("Kill switch"), boolText(appSettingsRepository.isKillSwitchEnabled())));
-            main.append(QString());
-            main.append(style.bold(QStringLiteral("Commands")));
-            main.append(style.dim(QStringLiteral("  connect [server]     disconnect     servers list")));
-            main.append(style.dim(QStringLiteral("  settings             status         help")));
+            QStringList overview;
+            overview.append(style.bold(QStringLiteral("Overview")));
+            overview.append(QString());
+            overview.append(row(QStringLiteral("Service"), serviceReady ? style.green(QStringLiteral("ready"))
+                                                                        : style.red(QStringLiteral("not running"))));
+            overview.append(row(QStringLiteral("VPN state"), stateName(vpnConnection.connectionState())));
+            overview.append(row(QStringLiteral("Servers"), QString::number(serversController.getServersCount())));
+            overview.append(row(QStringLiteral("Default server"), promptServerName()));
+            overview.append(row(QStringLiteral("Amnezia DNS"), boolText(appSettingsRepository.useAmneziaDns())));
+            overview.append(row(QStringLiteral("Kill switch"), boolText(appSettingsRepository.isKillSwitchEnabled())));
+            overview.append(QString());
+            overview.append(style.bold(QStringLiteral("Commands")));
+            overview.append(style.dim(QStringLiteral("  connect [server]   disconnect")));
+            overview.append(style.dim(QStringLiteral("  servers list       settings")));
+            overview.append(style.dim(QStringLiteral("  status             help")));
             if (!state.lastCommand.isEmpty()) {
-                main.append(QString());
-                main.append(QStringLiteral("  Last: %1").arg(elideTuiText(state.lastCommand, width - 8)));
+                overview.append(QString());
+                overview.append(QStringLiteral("  Last: %1").arg(state.lastCommand));
+            }
+
+            const QStringList logo = logoLines();
+            int logoWidth = 0;
+            for (const QString &line : logo) {
+                logoWidth = qMax(logoWidth, tuiTextWidth(line));
+            }
+            const int logoRows = static_cast<int>(logo.size());
+            const int overviewRows = static_cast<int>(overview.size());
+            const int rightWidth = width - logoWidth - 4;
+            if (mainRows >= logoRows && rightWidth >= 32) {
+                const int rows = qMin(mainRows, qMax(logoRows, overviewRows));
+                for (int i = 0; i < rows; ++i) {
+                    const QString left = logo.value(i);
+                    const int padding = logoWidth - tuiTextWidth(left) + 3;
+                    main.append(QLatin1Char(' ') + left
+                                + QString(padding, QLatin1Char(' '))
+                                + amnezia::cli::clipAnsiLine(overview.value(i), rightWidth));
+                }
+            } else {
+                main = overview;
             }
         } else if (state.view == TuiView::Settings) {
             const QVector<TuiSetting> current = tuiSettings();

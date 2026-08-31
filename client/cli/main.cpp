@@ -12,18 +12,24 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QFuture>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocale>
 #include <QMetaEnum>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QScopedPointer>
 #include <QSharedPointer>
 #include <QStringList>
+#include <QSysInfo>
 #include <QTextStream>
 #include <QTimer>
+#include <QUrl>
 #include <QVariantMap>
 
 #include <libssh/libssh.h>
@@ -58,6 +64,7 @@
 #include "logger.h"
 #include "mozilla/localsocketcontroller.h"
 #include "secureQSettings.h"
+#include "subscriptionCodec.h"
 #include "terminal.h"
 #include "version.h"
 #include "vpnConnection.h"
@@ -67,6 +74,7 @@ using namespace amnezia;
 namespace
 {
 std::atomic_bool g_stopRequested = false;
+constexpr qint64 maxSubscriptionDownloadSize = 4 * 1024 * 1024;
 
 #ifdef Q_OS_WIN
 BOOL WINAPI consoleHandler(DWORD type)
@@ -803,7 +811,10 @@ private:
         out << "  selfhost ...                   SSH check, install, scan, remove, reboot, status" << Qt::endl;
         out << "    install[-new] supports awg3 and tproxy; TProxy requires --hostname and --email" << Qt::endl;
         out << "  clients list|rename|revoke     Manage self-hosted client access" << Qt::endl;
-        out << "  subscription ...               Gateway import/update/account/native config commands" << Qt::endl;
+        out << "  subscription ...               Premium plus plain/Base64/hex/16x subscription feeds" << Qt::endl;
+        out << "    import|inspect --data|--file|--url [--encoding auto|plain|base64|hex]" << Qt::endl;
+        out << "    device-id                    Print this device's privacy-preserving 32x ID" << Qt::endl;
+        out << "    pack --device <32x> ...      Encrypt a feed into a device-bound 16x token" << Qt::endl;
         out << "  catalog                        Fetch Gateway service catalog" << Qt::endl;
         out << "  news                           Fetch Gateway news for installed services" << Qt::endl;
         out << "  shell                          Open the dynamic terminal UI" << Qt::endl << Qt::endl;
@@ -1970,11 +1981,334 @@ private:
         return fail(QStringLiteral("Unknown clients command: %1").arg(sub));
     }
 
+    QString subscriptionDeviceIdValue()
+    {
+        QByteArray seed = QSysInfo::machineUniqueId();
+        if (seed.isEmpty()) {
+            seed = appSettingsRepository.getInstallationUuid(true).toUtf8();
+        }
+        return amnezia::cli::SubscriptionCodec::createDeviceId(seed);
+    }
+
+    bool downloadSubscription(const QUrl &url, int timeoutMs, QByteArray &data, QString &error)
+    {
+        QNetworkAccessManager manager;
+        QNetworkRequest request(url);
+        request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+        request.setMaximumRedirectsAllowed(5);
+        request.setTransferTimeout(timeoutMs);
+        request.setRawHeader("User-Agent", QByteArray("AmneziaCLI/") + QByteArray(APP_VERSION));
+
+        QNetworkReply *reply = manager.get(request);
+        QEventLoop loop;
+        QTimer timer;
+        timer.setSingleShot(true);
+
+        bool timedOut = false;
+        bool tooLarge = false;
+        QObject::connect(&timer, &QTimer::timeout, &loop, [&]() {
+            timedOut = true;
+            reply->abort();
+            loop.quit();
+        });
+        QObject::connect(reply, &QNetworkReply::metaDataChanged, &loop, [&]() {
+            const QVariant contentLength = reply->header(QNetworkRequest::ContentLengthHeader);
+            if (contentLength.isValid() && contentLength.toLongLong() > maxSubscriptionDownloadSize) {
+                tooLarge = true;
+                reply->abort();
+            }
+        });
+        QObject::connect(reply, &QIODevice::readyRead, &loop, [&]() {
+            data.append(reply->readAll());
+            if (data.size() > maxSubscriptionDownloadSize) {
+                tooLarge = true;
+                reply->abort();
+            }
+        });
+        QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+
+        timer.start(timeoutMs);
+        loop.exec();
+        timer.stop();
+        data.append(reply->readAll());
+
+        const QNetworkReply::NetworkError networkError = reply->error();
+        const QString networkErrorText = reply->errorString();
+        const int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        delete reply;
+
+        if (tooLarge || data.size() > maxSubscriptionDownloadSize) {
+            data.clear();
+            error = QStringLiteral("Subscription download exceeds the 4 MiB limit.");
+            return false;
+        }
+        if (timedOut) {
+            data.clear();
+            error = QStringLiteral("Subscription download timed out.");
+            return false;
+        }
+        if (networkError != QNetworkReply::NoError) {
+            data.clear();
+            error = networkErrorText;
+            return false;
+        }
+        if (httpStatus < 200 || httpStatus >= 300) {
+            data.clear();
+            error = QStringLiteral("Subscription endpoint returned HTTP %1.").arg(httpStatus);
+            return false;
+        }
+        return true;
+    }
+
+    bool readSubscriptionSource(const ArgView &view, QByteArray &data, QString &source, QString &error)
+    {
+        const bool hasData = view.hasAny({ "--data", "-d" });
+        const bool hasFile = view.hasAny({ "--file", "-f" });
+        const bool hasUrl = view.hasAny({ "--url", "-u" });
+        if (static_cast<int>(hasData) + static_cast<int>(hasFile) + static_cast<int>(hasUrl) != 1) {
+            error = QStringLiteral("Pass exactly one source: --data, --file, or --url.");
+            return false;
+        }
+
+        if (hasData) {
+            data = view.valueAny({ "--data", "-d" }).toUtf8();
+            source = QStringLiteral("data");
+        } else if (hasFile) {
+            const QString path = view.valueAny({ "--file", "-f" });
+            if (path.isEmpty() || !readFile(path, data, error)) {
+                if (error.isEmpty()) {
+                    error = QStringLiteral("Subscription file path is empty.");
+                }
+                return false;
+            }
+            source = QFileInfo(path).fileName();
+        } else {
+            const QString urlText = view.valueAny({ "--url", "-u" }).trimmed();
+            const QUrl url(urlText, QUrl::StrictMode);
+            if (!url.isValid() || (url.scheme() != QLatin1String("https") && url.scheme() != QLatin1String("http"))) {
+                error = QStringLiteral("Subscription URL must use HTTP or HTTPS.");
+                return false;
+            }
+            bool timeoutOk = false;
+            const int timeoutSeconds = view.value(QStringLiteral("--timeout"), QStringLiteral("20")).toInt(&timeoutOk);
+            if (!timeoutOk || timeoutSeconds < 1 || timeoutSeconds > 120) {
+                error = QStringLiteral("--timeout must be between 1 and 120 seconds.");
+                return false;
+            }
+            if (!downloadSubscription(url, timeoutSeconds * 1000, data, error)) {
+                return false;
+            }
+            source = QStringLiteral("url:%1").arg(url.host());
+        }
+
+        if (data.trimmed().isEmpty()) {
+            error = QStringLiteral("Subscription source is empty.");
+            return false;
+        }
+        if (data.size() > maxSubscriptionDownloadSize) {
+            error = QStringLiteral("Subscription source exceeds the 4 MiB limit.");
+            return false;
+        }
+        return true;
+    }
+
+    int subscriptionDeviceId()
+    {
+        const QString deviceId = subscriptionDeviceIdValue();
+        if (jsonOutput) {
+            QJsonObject object;
+            object.insert(QStringLiteral("ok"), true);
+            object.insert(QStringLiteral("deviceId"), deviceId);
+            out << jsonCompact(object) << Qt::endl;
+        } else {
+            out << deviceId << Qt::endl;
+        }
+        return 0;
+    }
+
+    int packSubscription(const ArgView &view)
+    {
+        const QString deviceId = view.value(QStringLiteral("--device")).trimmed();
+        if (!amnezia::cli::SubscriptionCodec::isValidDeviceId(deviceId)) {
+            return fail(QStringLiteral("Usage: subscription pack --device <32x-id> (--data <text>|--file <path>|--url "
+                                       "<url>) [--out file]"));
+        }
+
+        QByteArray data;
+        QString source;
+        QString error;
+        if (!readSubscriptionSource(view, data, source, error)) {
+            return fail(error);
+        }
+
+        const QString token = amnezia::cli::SubscriptionCodec::pack16x(data, deviceId, error);
+        if (token.isEmpty()) {
+            return fail(error);
+        }
+
+        const QString outputPath = view.valueAny({ "--out", "-o" });
+        if (!outputPath.isEmpty()) {
+            if (!writeFile(outputPath, token.toUtf8(), error)) {
+                return fail(error);
+            }
+            return ok(QStringLiteral("16x subscription written to %1.").arg(outputPath));
+        }
+        if (jsonOutput) {
+            QJsonObject object;
+            object.insert(QStringLiteral("ok"), true);
+            object.insert(QStringLiteral("format"), QStringLiteral("16x-v1"));
+            object.insert(QStringLiteral("source"), source);
+            object.insert(QStringLiteral("token"), token);
+            out << jsonCompact(object) << Qt::endl;
+        } else {
+            out << token << Qt::endl;
+        }
+        return 0;
+    }
+
+    int importSubscription(const ArgView &view, bool shouldImport)
+    {
+        QByteArray sourceData;
+        QString source;
+        QString error;
+        if (!readSubscriptionSource(view, sourceData, source, error)) {
+            return fail(
+                    error,
+                    QStringLiteral("Use --encoding auto|plain|base64|hex. URL sources accept --timeout <seconds>."));
+        }
+
+        amnezia::cli::SubscriptionCodec::Encoding encoding;
+        if (!amnezia::cli::SubscriptionCodec::parseEncoding(
+                    view.value(QStringLiteral("--encoding"), QStringLiteral("auto")), encoding)) {
+            return fail(QStringLiteral("Unknown subscription encoding. Use auto, plain, base64, or hex."));
+        }
+
+        const auto decoded = amnezia::cli::SubscriptionCodec::decode(sourceData, encoding, subscriptionDeviceIdValue());
+        if (!decoded.success) {
+            return fail(decoded.error);
+        }
+
+        struct ValidatedEntry
+        {
+            int index = 0;
+            QString kind;
+            ImportController::ImportResult result;
+        };
+
+        QVector<ValidatedEntry> validEntries;
+        QJsonArray invalidEntries;
+        QHash<QString, int> kindCounts;
+        for (int index = 0; index < decoded.entries.size(); ++index) {
+            const QString &entry = decoded.entries.at(index);
+            const QString kind = amnezia::cli::SubscriptionCodec::entryKind(entry);
+            kindCounts[kind] += 1;
+
+            ImportController::ImportResult result = importController.extractConfigFromData(entry);
+            if (result.errorCode != ErrorCode::NoError || result.config.isEmpty()) {
+                const ErrorCode entryError =
+                        result.errorCode == ErrorCode::NoError ? ErrorCode::ImportInvalidConfigError : result.errorCode;
+                QJsonObject invalid;
+                invalid.insert(QStringLiteral("index"), index + 1);
+                invalid.insert(QStringLiteral("kind"), kind);
+                invalid.insert(QStringLiteral("error"), cleanError(entryError));
+                invalidEntries.append(invalid);
+                continue;
+            }
+            validEntries.append({ index + 1, kind, result });
+        }
+
+        const bool allowPartial = view.has(QStringLiteral("--allow-partial"));
+        const bool dryRun = !shouldImport || view.has(QStringLiteral("--dry-run"));
+        if (shouldImport && !dryRun && !invalidEntries.isEmpty() && !allowPartial) {
+            return fail(QStringLiteral("Subscription has %1 invalid or unsupported entries; nothing was imported.")
+                                .arg(invalidEntries.size()),
+                        QStringLiteral("Run subscription inspect first or pass --allow-partial."));
+        }
+        if (validEntries.isEmpty()) {
+            return fail(QStringLiteral("Subscription does not contain any supported configurations."));
+        }
+
+        const int serversBefore = serversRepository.serversCount();
+        if (shouldImport && !dryRun) {
+            for (const ValidatedEntry &entry : validEntries) {
+                if (!entry.result.maliciousWarningText.isEmpty() && !jsonOutput) {
+                    err << style.orange(QStringLiteral("Warning for entry %1: ").arg(entry.index))
+                        << entry.result.maliciousWarningText << Qt::endl;
+                }
+                importController.importConfig(entry.result.config);
+            }
+            serversRepository.invalidateCache();
+        }
+        const int importedCount = shouldImport && !dryRun ? qMax(0, serversRepository.serversCount() - serversBefore) : 0;
+
+        QJsonObject kinds;
+        QStringList kindNames = kindCounts.keys();
+        kindNames.sort();
+        for (const QString &kind : kindNames) {
+            kinds.insert(kind, kindCounts.value(kind));
+        }
+
+        const bool completed = invalidEntries.isEmpty() || (allowPartial && !validEntries.isEmpty());
+        if (jsonOutput) {
+            QJsonObject object;
+            object.insert(QStringLiteral("ok"), completed);
+            object.insert(QStringLiteral("source"), source);
+            object.insert(QStringLiteral("encoding"), amnezia::cli::SubscriptionCodec::encodingName(decoded.encoding));
+            object.insert(QStringLiteral("deviceBound"), decoded.deviceBound);
+            object.insert(QStringLiteral("entries"), decoded.entries.size());
+            object.insert(QStringLiteral("valid"), validEntries.size());
+            object.insert(QStringLiteral("invalid"), invalidEntries.size());
+            object.insert(QStringLiteral("imported"), importedCount);
+            object.insert(QStringLiteral("dryRun"), dryRun);
+            object.insert(QStringLiteral("kinds"), kinds);
+            object.insert(QStringLiteral("errors"), invalidEntries);
+            out << jsonCompact(object) << Qt::endl;
+        } else {
+            out << style.bold(QStringLiteral("Subscription %1")
+                                      .arg(shouldImport ? QStringLiteral("import") : QStringLiteral("inspection")))
+                << Qt::endl;
+            out << "  Source: " << source << Qt::endl;
+            out << "  Encoding: " << amnezia::cli::SubscriptionCodec::encodingName(decoded.encoding)
+                << (decoded.deviceBound ? QStringLiteral(" (16x device-bound)") : QString()) << Qt::endl;
+            out << "  Entries: " << decoded.entries.size() << ", valid: " << validEntries.size()
+                << ", invalid: " << invalidEntries.size() << Qt::endl;
+            if (shouldImport) {
+                out << "  Imported: " << importedCount << (dryRun ? QStringLiteral(" (dry run)") : QString()) << Qt::endl;
+            }
+            QStringList kindSummary;
+            for (const QString &kind : kindNames) {
+                kindSummary.append(QStringLiteral("%1=%2").arg(kind).arg(kindCounts.value(kind)));
+            }
+            out << "  Kinds: " << kindSummary.join(QStringLiteral(", ")) << Qt::endl;
+            for (const QJsonValue &value : invalidEntries) {
+                const QJsonObject invalid = value.toObject();
+                err << style.red(QStringLiteral("  Entry %1 (%2): ")
+                                         .arg(invalid.value(QStringLiteral("index")).toInt())
+                                         .arg(invalid.value(QStringLiteral("kind")).toString()))
+                    << invalid.value(QStringLiteral("error")).toString() << Qt::endl;
+            }
+        }
+        return completed ? 0 : 1;
+    }
+
     int subscription(QStringList args)
     {
-        if (args.isEmpty()) return fail(QStringLiteral("Usage: subscription account|update|deactivate|vpn-key|native-export|native-revoke|remove|import-trial|import-gateway"));
+        if (args.isEmpty()) return fail(QStringLiteral("Usage: subscription import|inspect|device-id|pack|account|update|deactivate|vpn-key|native-export|native-revoke|remove|import-trial|import-gateway"));
         const QString sub = args.takeFirst().toLower();
         const ArgView view(args);
+
+        if (sub == QLatin1String("device-id") || sub == QLatin1String("hwid")) {
+            return subscriptionDeviceId();
+        }
+        if (sub == QLatin1String("pack") || sub == QLatin1String("pack-16x")) {
+            return packSubscription(view);
+        }
+        if (sub == QLatin1String("import") || sub == QLatin1String("add")) {
+            return importSubscription(view, true);
+        }
+        if (sub == QLatin1String("inspect") || sub == QLatin1String("check")) {
+            return importSubscription(view, false);
+        }
 
         if (sub == QLatin1String("account")) {
             const QString serverId = resolveRequiredServer(view.positionals());

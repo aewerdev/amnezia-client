@@ -393,6 +393,8 @@ if(WIN32 OR (APPLE AND NOT IOS AND NOT MACOS_NE) OR (LINUX AND NOT ANDROID))
         ${AMNEZIA_CLI_REPLICA_HEADERS}
         ${AMNEZIA_CLI_REPLICA_MOCS}
         ${CMAKE_CURRENT_LIST_DIR}/cli/main.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/cli/subscriptionCodec.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/cli/subscriptionCodec.h
         ${CMAKE_CURRENT_LIST_DIR}/cli/terminal.cpp
         ${CMAKE_CURRENT_LIST_DIR}/cli/terminal.h
     )

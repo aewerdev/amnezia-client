@@ -219,10 +219,14 @@ DockerContainer parseContainer(const QString &value, bool &ok)
     normalized.replace(QLatin1Char('_'), QLatin1Char('-'));
     const QMap<QString, DockerContainer> aliases = {
         { QStringLiteral("awg"), DockerContainer::Awg2 },
+        { QStringLiteral("awg3"), DockerContainer::Awg2 },
         { QStringLiteral("amneziawg"), DockerContainer::Awg2 },
+        { QStringLiteral("amneziawg3"), DockerContainer::Awg2 },
         { QStringLiteral("amnezia-wg"), DockerContainer::Awg2 },
+        { QStringLiteral("amnezia-wg3"), DockerContainer::Awg2 },
         { QStringLiteral("amnezia-awg"), DockerContainer::Awg },
         { QStringLiteral("amnezia-awg2"), DockerContainer::Awg2 },
+        { QStringLiteral("amnezia-awg3"), DockerContainer::Awg2 },
         { QStringLiteral("wg"), DockerContainer::WireGuard },
         { QStringLiteral("wireguard"), DockerContainer::WireGuard },
         { QStringLiteral("amnezia-wireguard"), DockerContainer::WireGuard },
@@ -239,6 +243,11 @@ DockerContainer parseContainer(const QString &value, bool &ok)
         { QStringLiteral("socks5proxy"), DockerContainer::Socks5Proxy },
         { QStringLiteral("mtproxy"), DockerContainer::MtProxy },
         { QStringLiteral("telemt"), DockerContainer::Telemt },
+        { QStringLiteral("tproxy"), DockerContainer::TProxy },
+        { QStringLiteral("t-proxy"), DockerContainer::TProxy },
+        { QStringLiteral("webproxy"), DockerContainer::TProxy },
+        { QStringLiteral("telegram-web"), DockerContainer::TProxy },
+        { QStringLiteral("amnezia-tproxy"), DockerContainer::TProxy },
         { QStringLiteral("tor"), DockerContainer::TorWebSite },
         { QStringLiteral("torwebsite"), DockerContainer::TorWebSite },
     };
@@ -792,6 +801,7 @@ private:
         out << "  dns allowed list|add|remove|replace" << Qt::endl;
         out << "  split sites|apps ...           Manage split tunneling lists and modes" << Qt::endl;
         out << "  selfhost ...                   SSH check, install, scan, remove, reboot, status" << Qt::endl;
+        out << "    install[-new] supports awg3 and tproxy; TProxy requires --hostname and --email" << Qt::endl;
         out << "  clients list|rename|revoke     Manage self-hosted client access" << Qt::endl;
         out << "  subscription ...               Gateway import/update/account/native config commands" << Qt::endl;
         out << "  catalog                        Fetch Gateway service catalog" << Qt::endl;
@@ -1611,13 +1621,18 @@ private:
     {
         const QString sub = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().toLower();
         if (sub == QLatin1String("list")) {
-            const QVector<QPair<QString, QString>> sites = ipSplitController.getCurrentSites();
+            const QVector<QPair<QString, QStringList>> sites = ipSplitController.getCurrentSites();
             if (jsonOutput) {
                 QJsonArray array;
                 for (const auto &site : sites) {
                     QJsonObject object;
                     object.insert(QStringLiteral("host"), site.first);
-                    object.insert(QStringLiteral("ip"), site.second);
+                    object.insert(QStringLiteral("ip"), site.second.isEmpty() ? QString() : site.second.first());
+                    QJsonArray ips;
+                    for (const QString &ip : site.second) {
+                        ips.append(ip);
+                    }
+                    object.insert(QStringLiteral("ips"), ips);
                     array.append(object);
                 }
                 out << QString::fromUtf8(QJsonDocument(array).toJson(QJsonDocument::Compact)) << Qt::endl;
@@ -1626,7 +1641,11 @@ private:
                 out << "  Enabled: " << boolText(ipSplitController.isSplitTunnelingEnabled()) << Qt::endl;
                 out << "  Mode: " << routeModeName(ipSplitController.getRouteMode()) << Qt::endl;
                 for (const auto &site : sites) {
-                    out << "  " << site.first << (site.second.isEmpty() ? QString() : style.dim(QStringLiteral(" -> %1").arg(site.second))) << Qt::endl;
+                    out << "  " << site.first
+                        << (site.second.isEmpty()
+                                    ? QString()
+                                    : style.dim(QStringLiteral(" -> %1").arg(site.second.join(QStringLiteral(", ")))))
+                        << Qt::endl;
                 }
             }
             return 0;
@@ -1785,10 +1804,14 @@ private:
             ServerCredentials credentials;
             if (!credentialsFromArgs(view, credentials, false)) return fail(QStringLiteral("Pass --host, --user, and --secret."));
             DockerContainer container = containerFromOption(view, DockerContainer::Awg2);
+            if (!prepareTProxyInstall(view, container)) return 1;
             const int port = view.value(QStringLiteral("--port"), QString::number(ProtocolUtils::getPortForInstall(ContainerUtils::defaultProtocol(container)))).toInt();
             const TransportProto transport = parseTransport(view.value(QStringLiteral("--transport"), ProtocolUtils::transportProtoToString(ProtocolUtils::defaultTransportProto(ContainerUtils::defaultProtocol(container)))));
             bool installed = false;
             const ErrorCode code = installController.installServer(credentials, container, port, transport, installed);
+            if (container == DockerContainer::TProxy) {
+                installController.setTProxyInstallHints({}, {});
+            }
             if (code != ErrorCode::NoError) return fail(cleanError(code));
             return ok(QStringLiteral("Server installed. Container installed: %1").arg(boolText(installed)));
         }
@@ -1796,10 +1819,14 @@ private:
             const QString serverId = resolveRequiredServer(view.positionals());
             if (serverId.isEmpty()) return fail(QStringLiteral("Server not found."));
             DockerContainer container = containerFromOption(view, DockerContainer::Awg2);
+            if (!prepareTProxyInstall(view, container)) return 1;
             const int port = view.value(QStringLiteral("--port"), QString::number(ProtocolUtils::getPortForInstall(ContainerUtils::defaultProtocol(container)))).toInt();
             const TransportProto transport = parseTransport(view.value(QStringLiteral("--transport"), ProtocolUtils::transportProtoToString(ProtocolUtils::defaultTransportProto(ContainerUtils::defaultProtocol(container)))));
             bool installed = false;
             const ErrorCode code = installController.installContainer(serverId, container, port, transport, installed);
+            if (container == DockerContainer::TProxy) {
+                installController.setTProxyInstallHints({}, {});
+            }
             if (code != ErrorCode::NoError) return fail(cleanError(code));
             return ok(QStringLiteral("Container install finished. Installed: %1").arg(boolText(installed)));
         }
@@ -1862,6 +1889,22 @@ private:
         bool ok = false;
         const DockerContainer container = parseContainer(value, ok);
         return ok ? container : fallback;
+    }
+
+    bool prepareTProxyInstall(const ArgView &view, DockerContainer container)
+    {
+        if (container != DockerContainer::TProxy) {
+            return true;
+        }
+
+        const QString hostname = view.valueAny({ "--hostname", "--domain" }).trimmed();
+        const QString email = view.value(QStringLiteral("--email")).trimmed();
+        if (hostname.isEmpty() || email.isEmpty()) {
+            fail(QStringLiteral("TProxy requires --hostname <domain> and --email <acme-email>."));
+            return false;
+        }
+        installController.setTProxyInstallHints(hostname, email);
+        return true;
     }
 
     bool credentialsFromArgs(const ArgView &view, ServerCredentials &credentials, bool allowPortAlias = true) const

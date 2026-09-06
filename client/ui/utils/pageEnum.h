@@ -56,6 +56,7 @@ namespace PageLoader
         PageSetupWizardProtocolSettings,
         PageSetupWizardInstalling,
         PageSetupWizardConfigSource,
+        PageUniversalSubscriptions,
         PageSetupWizardTextKey,
         PageSetupWizardViewConfig,
         PageSetupWizardQrReader,

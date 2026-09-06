@@ -186,6 +186,14 @@ ensure_command() {
     command -v "$cmd" >/dev/null 2>&1 || die "Missing '$cmd'. $hint"
 }
 
+ensure_submodules() {
+    [[ -f "$SOURCE_DIR/.gitmodules" ]] || return 0
+    if git -C "$SOURCE_DIR" submodule status --recursive 2>/dev/null | grep -q '^-'; then
+        log "Initializing Git submodules"
+        run git -C "$SOURCE_DIR" submodule update --init --recursive
+    fi
+}
+
 fix_container_ownership() {
     if [[ "$DRY_RUN" -eq 0 && "$(id -u)" == "0" && -n "${HOST_UID:-}" && -n "${HOST_GID:-}" ]]; then
         chown -R "$HOST_UID:$HOST_GID" "$BUILD_ROOT" "$ARTIFACT_DIR" 2>/dev/null || true
@@ -423,6 +431,7 @@ build_host_target() {
 
     log "Building target '$target' on host distro '$(current_distro_id)'"
     install_deps "$target"
+    ensure_submodules
     ensure_python_tooling no
     qt_prefix="$(ensure_qt)"
     cmake_prefix="$(cmake_prefix_with_qt "$qt_prefix")"
@@ -566,7 +575,11 @@ run_target() {
 
     case "$MODE" in
         host)
-            build_host_target "$target"
+            if [[ "$target" == "nix" && -z "${IN_NIX_SHELL:-}" ]]; then
+                run_nix_target
+            else
+                build_host_target "$target"
+            fi
             ;;
         container)
             if [[ "$target" == "nix" ]]; then

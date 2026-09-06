@@ -271,6 +271,7 @@ PageType {
     property list<QtObject> variants: [
         amneziaVpn,
         selfHostVpn,
+        universalSubscriptions,
         backupRestore,
         fileOpen,
         qrScan,
@@ -306,6 +307,19 @@ PageType {
         property bool isVisible: true
         property var handler: function() {
             PageController.goToPage(PageEnum.PageSetupWizardCredentials)
+        }
+    }
+
+    QtObject {
+        id: universalSubscriptions
+
+        property bool featuredAmneziaConnection: false
+        property string title: qsTr("Universal subscription")
+        property string description: qsTr("Text, Base64, Hex, URL and device-bound 16x")
+        property string imageSource: "qrc:/images/controls/globe-2.svg"
+        property bool isVisible: true
+        property var handler: function() {
+            PageController.goToPage(PageEnum.PageUniversalSubscriptions)
         }
     }
 

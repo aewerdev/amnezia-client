@@ -64,7 +64,7 @@
 #include "logger.h"
 #include "mozilla/localsocketcontroller.h"
 #include "secureQSettings.h"
-#include "subscriptionCodec.h"
+#include "core/utils/subscriptionCodec.h"
 #include "terminal.h"
 #include "version.h"
 #include "vpnConnection.h"
@@ -1987,7 +1987,7 @@ private:
         if (seed.isEmpty()) {
             seed = appSettingsRepository.getInstallationUuid(true).toUtf8();
         }
-        return amnezia::cli::SubscriptionCodec::createDeviceId(seed);
+        return amnezia::SubscriptionCodec::createDeviceId(seed);
     }
 
     bool downloadSubscription(const QUrl &url, int timeoutMs, QByteArray &data, QString &error)
@@ -2129,7 +2129,7 @@ private:
     int packSubscription(const ArgView &view)
     {
         const QString deviceId = view.value(QStringLiteral("--device")).trimmed();
-        if (!amnezia::cli::SubscriptionCodec::isValidDeviceId(deviceId)) {
+        if (!amnezia::SubscriptionCodec::isValidDeviceId(deviceId)) {
             return fail(QStringLiteral("Usage: subscription pack --device <32x-id> (--data <text>|--file <path>|--url "
                                        "<url>) [--out file]"));
         }
@@ -2141,7 +2141,7 @@ private:
             return fail(error);
         }
 
-        const QString token = amnezia::cli::SubscriptionCodec::pack16x(data, deviceId, error);
+        const QString token = amnezia::SubscriptionCodec::pack16x(data, deviceId, error);
         if (token.isEmpty()) {
             return fail(error);
         }
@@ -2177,13 +2177,13 @@ private:
                     QStringLiteral("Use --encoding auto|plain|base64|hex. URL sources accept --timeout <seconds>."));
         }
 
-        amnezia::cli::SubscriptionCodec::Encoding encoding;
-        if (!amnezia::cli::SubscriptionCodec::parseEncoding(
+        amnezia::SubscriptionCodec::Encoding encoding;
+        if (!amnezia::SubscriptionCodec::parseEncoding(
                     view.value(QStringLiteral("--encoding"), QStringLiteral("auto")), encoding)) {
             return fail(QStringLiteral("Unknown subscription encoding. Use auto, plain, base64, or hex."));
         }
 
-        const auto decoded = amnezia::cli::SubscriptionCodec::decode(sourceData, encoding, subscriptionDeviceIdValue());
+        const auto decoded = amnezia::SubscriptionCodec::decode(sourceData, encoding, subscriptionDeviceIdValue());
         if (!decoded.success) {
             return fail(decoded.error);
         }
@@ -2200,7 +2200,7 @@ private:
         QHash<QString, int> kindCounts;
         for (int index = 0; index < decoded.entries.size(); ++index) {
             const QString &entry = decoded.entries.at(index);
-            const QString kind = amnezia::cli::SubscriptionCodec::entryKind(entry);
+            const QString kind = amnezia::SubscriptionCodec::entryKind(entry);
             kindCounts[kind] += 1;
 
             ImportController::ImportResult result = importController.extractConfigFromData(entry);
@@ -2253,7 +2253,7 @@ private:
             QJsonObject object;
             object.insert(QStringLiteral("ok"), completed);
             object.insert(QStringLiteral("source"), source);
-            object.insert(QStringLiteral("encoding"), amnezia::cli::SubscriptionCodec::encodingName(decoded.encoding));
+            object.insert(QStringLiteral("encoding"), amnezia::SubscriptionCodec::encodingName(decoded.encoding));
             object.insert(QStringLiteral("deviceBound"), decoded.deviceBound);
             object.insert(QStringLiteral("entries"), decoded.entries.size());
             object.insert(QStringLiteral("valid"), validEntries.size());
@@ -2268,7 +2268,7 @@ private:
                                       .arg(shouldImport ? QStringLiteral("import") : QStringLiteral("inspection")))
                 << Qt::endl;
             out << "  Source: " << source << Qt::endl;
-            out << "  Encoding: " << amnezia::cli::SubscriptionCodec::encodingName(decoded.encoding)
+            out << "  Encoding: " << amnezia::SubscriptionCodec::encodingName(decoded.encoding)
                 << (decoded.deviceBound ? QStringLiteral(" (16x device-bound)") : QString()) << Qt::endl;
             out << "  Entries: " << decoded.entries.size() << ", valid: " << validEntries.size()
                 << ", invalid: " << invalidEntries.size() << Qt::endl;

@@ -11,7 +11,7 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 
-namespace amnezia::cli
+namespace amnezia
 {
     namespace
     {
@@ -538,4 +538,4 @@ namespace amnezia::cli
         return QStringLiteral("unknown");
     }
 
-} // namespace amnezia::cli
+} // namespace amnezia

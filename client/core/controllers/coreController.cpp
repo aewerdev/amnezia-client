@@ -194,6 +194,10 @@ void CoreController::initControllers()
     m_importController = new ImportUiController(m_importCoreController, this);
     setQmlContextProperty("ImportController", m_importController);
 
+    m_universalSubscriptionUiController = new UniversalSubscriptionUiController(
+            m_importCoreController, m_appSettingsRepository, this);
+    setQmlContextProperty("UniversalSubscriptionController", m_universalSubscriptionUiController);
+
     m_exportUiController = new ExportUiController(m_exportController, this);
     setQmlContextProperty("ExportController", m_exportUiController);
 

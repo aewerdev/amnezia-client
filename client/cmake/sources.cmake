@@ -7,6 +7,7 @@ set(HEADERS ${HEADERS}
     ${CLIENT_ROOT_DIR}/core/utils/errorCodes.h
     ${CLIENT_ROOT_DIR}/core/utils/routeModes.h
     ${CLIENT_ROOT_DIR}/core/utils/commonStructs.h
+    ${CLIENT_ROOT_DIR}/core/utils/subscriptionCodec.h
     ${CLIENT_ROOT_DIR}/core/utils/containerEnum.h
     ${CLIENT_ROOT_DIR}/core/utils/protocolEnum.h
     ${CLIENT_ROOT_DIR}/core/utils/containers/containerUtils.h
@@ -97,6 +98,7 @@ endif()
 
 set(SOURCES ${SOURCES}
     ${CLIENT_ROOT_DIR}/core/utils/migrations.cpp
+    ${CLIENT_ROOT_DIR}/core/utils/subscriptionCodec.cpp
     ${CLIENT_ROOT_DIR}/amneziaApplication.cpp
     ${CLIENT_ROOT_DIR}/core/utils/errorStrings.cpp
     ${CLIENT_ROOT_DIR}/core/utils/containers/containerUtils.cpp

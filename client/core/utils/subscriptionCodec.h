@@ -5,7 +5,7 @@
 #include <QString>
 #include <QStringList>
 
-namespace amnezia::cli
+namespace amnezia
 {
 
     class SubscriptionCodec
@@ -38,6 +38,6 @@ namespace amnezia::cli
         static QString entryKind(const QString &entry);
     };
 
-} // namespace amnezia::cli
+} // namespace amnezia
 
 #endif // SUBSCRIPTIONCODEC_H

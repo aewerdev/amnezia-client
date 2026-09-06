@@ -18,6 +18,7 @@
 #include "core/controllers/selfhosted/exportController.h"
 #include "ui/controllers/qml/focusController.h"
 #include "ui/controllers/importUiController.h"
+#include "ui/controllers/universalSubscriptionUiController.h"
 #include "core/controllers/selfhosted/importController.h"
 #include "ui/controllers/selfhosted/installUiController.h"
 #include "ui/controllers/qml/pageController.h"
@@ -167,6 +168,7 @@ private:
     PageController* m_pageController;
     InstallUiController* m_installUiController;
     ImportUiController* m_importController;
+    UniversalSubscriptionUiController* m_universalSubscriptionUiController;
     ImportController* m_importCoreController;
     ExportUiController* m_exportUiController;
     SettingsUiController* m_settingsUiController;

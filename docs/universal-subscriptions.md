@@ -1,6 +1,12 @@
-# Universal CLI subscriptions
+# Universal subscriptions
 
-The CLI accepts subscription feeds independently of Amnezia Premium.
+The desktop GUI and CLI accept subscription feeds independently of Amnezia Premium.
+
+## GUI
+
+Open **Subscriptions** from Settings, or choose **Universal subscription** while adding a connection. The Import tab accepts text, a local file, or an HTTP(S) URL and supports automatic, plain-text, Base64, and hexadecimal decoding. It validates every entry before enabling import; partial import is an explicit opt-in.
+
+The Create 16x tab shows the current device's 32x ID and creates a device-bound token from text, a local file, or an HTTP(S) URL. GUI and CLI use the same codec, size limits, URL policy, and 16x implementation.
 
 ## Sources and encodings
 

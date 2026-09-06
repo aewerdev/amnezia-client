@@ -104,6 +104,7 @@ PageType {
     property list<QtObject> settingsEntries: [
         servers,
         connection,
+        subscriptions,
         application,
         news,
         backup,
@@ -130,6 +131,17 @@ PageType {
         property bool isVisible: true
         readonly property var clickedHandler: function() {
             PageController.goToPage(PageEnum.PageSettingsConnection)
+        }
+    }
+
+    QtObject {
+        id: subscriptions
+
+        property string title: qsTr("Subscriptions")
+        readonly property string leftImagePath: "qrc:/images/controls/globe-2.svg"
+        property bool isVisible: true
+        readonly property var clickedHandler: function() {
+            PageController.goToPage(PageEnum.PageUniversalSubscriptions)
         }
     }
 
